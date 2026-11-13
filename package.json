@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-roblox-tiered",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Roblox Studio preset with evidence-driven per-task model tiers and a single Studio operator.",
