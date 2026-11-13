@@ -8,11 +8,11 @@ Captain coordinates substantive development rather than implementing by default.
 2. Start a worker with the actual bounded assignment immediately: outcome, owned paths or read-only inputs, prerequisites, brain SHA, required skills and expected evidence. Native workers use normal DSH shell, editing and other available tools under the session's ordinary permissions. There is no read-only readiness stage or custom permission-assignment step.
 3. Let implementers run their own builds and tests. Captain ensures all acceptance criteria have coverage, arranges integration checks and returns shared evidence to the implementer when another worker or the Studio operator must obtain it. A missing capability calls for a concrete handoff, not a user-run checklist.
 4. For Studio work, designate one operator through messages using [studio.md](studio.md). Other workers use snapshots or send bounded requests to that operator. This is cooperative coordination, not a custom lock or control-tool dependency.
-5. Reuse workers with `send_message` for related follow-ups. Preserve source ownership, evidence and the next check on reassignment; use `interrupt_agent` for work that truly needs stopping. An independent worker reviews consequential implementation. Escalation is an explicit route/handoff, not an assumed mid-task model switch.
+5. Reuse workers with `send_message` for related follow-ups. Preserve source ownership, evidence and the next check on reassignment; send a stop request with `send_message` when work is no longer needed, and distinguish the request from confirmed termination. An independent worker reviews consequential implementation. Escalation is an explicit route/handoff, not an assumed mid-task model switch.
 
 ## Useful concurrency
 
-Begin with one implementer and a second worker when independent research, test design or review is ready. Split by independent contracts and paths, not a target headcount. Review completed slices while unrelated implementation continues. Increase toward three or four only when provider capacity, rework and verification throughput justify it; different models on one account need not have independent quota.
+Usually start with one or two workers. Add more when independent tasks are ready and provider capacity allows; judge concurrency by throughput and rework, not headcount. Split by independent contracts and paths. Review completed slices while unrelated implementation continues. Different models on one account need not have independent quota.
 
 Receive completion notifications rather than busy-polling. When only waiting remains, end the turn and let completion wake captain; a persisted goal carries the unfinished objective forward.
 

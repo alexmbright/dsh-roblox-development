@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "title": { "en": "Alex Bright Roblox plugins" },
+  "plugins": [{
+    "name": "@local/dsh-roblox-tiered",
+    "title": { "en": "Roblox development" },
+    "description": { "en": "Native worker coordination, advisory model tiers and Roblox Studio MCP." },
+    "author": "alexmbright",
+    "repository": { "url": "https://github.com/alexmbright/dsh-roblox-development" },
+    "versions": [{
+      "version": "1.0.1",
+      "publishTimestamp": 1794551462,
+      "source": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git", "commit": "48827507baf9cda7cec73455d813ddef45cfaf89" }
+    }]
+  }]
+}

@@ -4,7 +4,7 @@ Configuration-only DSH bundle `@local/dsh-roblox-tiered` for Windows and macOS. 
 
 ## Install
 
-Prerequisites: current DeepSeek Harness (CLI syntax verified on 0.2.2-rc.1), Git, Node.js 22+ with npm/npx visible to DSH, Roblox Studio, and your model-provider accounts signed into DSH. Repository access does not transfer credentials.
+Prerequisites: DeepSeek Harness 0.2.2-rc.2 or newer within the 0.2.x series, Git, Node.js 22+ with npm/npx visible to DSH, Roblox Studio, and your model-provider accounts signed into DSH. Repository access does not transfer credentials.
 
 **Fully quit DSH Desktop**, then run in Terminal:
 
@@ -18,7 +18,23 @@ Alternatively, from a running DSH session ask:
 
 > Install github:alexmbright/dsh-roblox-development using plugin_manager. If @local/dsh-roblox-tiered is already installed, remove that bundle first, then install this GitHub package.
 
-The installation is profile-wide. Existing sessions retain their previous preset revision. To update, quit Desktop and rerun the CLI command; for an exact release use `github:alexmbright/dsh-roblox-development#v1.0.0`.
+The installation is profile-wide. Existing sessions retain their previous preset revision; start a new session after updating.
+
+### Updates inside DSH
+
+Add this source yourself in DSH's custom plugin indexes UI (enable the optional custom plugin indexes bundle if needed):
+
+```text
+https://raw.githubusercontent.com/alexmbright/dsh-roblox-development/main/plugin-index.json
+```
+
+Install the Roblox bundle from that index. Each version uses an immutable full commit SHA, which lets DSH manage Git updates and rollback. An earlier install from an unpinned GitHub URL or a tag needs a one-time migration: remove only `@local/dsh-roblox-tiered`, then install its current version from the index. Do not remove unrelated plugins. Subsequent releases advertised by the index can be updated in the app; a GitHub tag alone does not advertise an update.
+
+For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.2`; tag installs do not provide managed Git updates.
+
+### Native worker availability
+
+The preset uses DSH's native `spawn` and `fork` tools and the host's native backends. Version 1.0.2 updates rc2 compatibility metadata and removes the stale `interrupt_agent` reference; it does not replace the spawn implementation. Check actual tool declarations and dispatch results before concluding that workers are unavailable. A Windows session reported successful native worker creation after correcting its earlier availability claim. macOS spawning still requires a live smoke test.
 
 ## First session
 
