@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Roblox development",
-    "description": "Role-aware model tiers, regularly refreshed Roblox skills, and a coordinated Studio operator."
+    "description": "Role-aware model tiers, refreshed Roblox skills, and a coordinated Studio operator. Includes session-scoped compatibility for Chrrxs structured-only MCP results without patching DSH. Does not fix Host process-tree cleanup."
   }
 }

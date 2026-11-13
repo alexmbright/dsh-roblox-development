@@ -13,10 +13,13 @@ const refs = await Promise.all(['routing', 'teams', 'studio'].map(n => text(`ski
 const selection = await text('skills/roblox-tiered-workflow/references/skill-selection.md');
 const docs = [skill, ...refs, selection].join('\n');
 
-test('configuration-only package declares the exact preset and no host changes', () => {
+test('package declares the exact preset and scoped result compatibility without host changes', () => {
   assert.equal(manifest.name, '@local/dsh-roblox-tiered');
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml');
   assert.equal(manifest.type, 'module');
+  assert.equal(manifest.exports['.'], './index.js');
+  assert.ok(manifest.files.includes('index.js'));
+  assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@local\/dsh-roblox-tiered'/);
   assert.equal(manifest.dependencies, undefined);
   assert.deepEqual(Object.keys(manifest.scripts), ['setup', 'test']);
   assert.match(patch, /^- insert:\s*\n {4}- id: preset-roblox/m);
@@ -145,7 +148,7 @@ test('localized metadata and original icon have public exports', async () => {
   assert.ok(Buffer.byteLength(icon) < 256 * 1024);
 });
 
-test('distribution list covers every authored resource without runtime code', async () => {
+test('distribution list covers every authored resource and only intended runtime code', async () => {
   async function walk(dir = '') {
     const out = [];
     for (const entry of await readdir(path.join(root, dir), { withFileTypes: true })) {
@@ -158,7 +161,7 @@ test('distribution list covers every authored resource without runtime code', as
   const patterns = manifest.files.map(p => new RegExp('^' + p.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'));
   for (const file of await walk()) {
     assert.ok(file === 'package.json' || patterns.some(p => p.test(file)), `unlisted: ${file}`);
-    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || ['scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
+    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || ['index.js', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
   }
   assert.match(await text('THIRD-PARTY-NOTICES.md'), /Copyright \(c\) 2026 TabooHarmony/);
 });

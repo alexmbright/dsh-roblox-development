@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Roblox Studio（分层）",
-    "description": "按角色选择模型层级，定期更新 Roblox 技能，并协调 Studio 操作。"
+    "description": "按角色选择模型层级，更新 Roblox 技能，并协调 Studio 操作。提供会话级 Chrrxs MCP 纯结构化结果兼容，无需修改 DSH 安装文件。不修复宿主进程树清理问题。"
   }
 }

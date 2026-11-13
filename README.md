@@ -1,6 +1,6 @@
 # Roblox development for DSH
 
-Configuration-only DSH bundle `@local/dsh-roblox-tiered` for Windows and macOS. Captain coordinates native workers, uses role-aware model routing, and selects current upstream roblox-brain skills. No custom permission guards, Studio locks, AgentTeams, or Rojo.
+DSH preset bundle with scoped MCP result compatibility `@local/dsh-roblox-tiered` for Windows and macOS. Captain coordinates native workers, uses role-aware model routing, and selects current upstream roblox-brain skills. No custom permission guards, Studio locks, AgentTeams, or Rojo.
 
 ## Install
 
@@ -30,7 +30,7 @@ https://raw.githubusercontent.com/alexmbright/dsh-roblox-development/main/plugin
 
 Install the Roblox bundle from that index. Each version uses an immutable full commit SHA, which lets DSH manage Git updates and rollback. An earlier install from an unpinned GitHub URL or a tag needs a one-time migration: remove only `@local/dsh-roblox-tiered`, then install its current version from the index. Do not remove unrelated plugins. Subsequent releases advertised by the index can be updated in the app; a GitHub tag alone does not advertise an update.
 
-For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.2`; tag installs do not provide managed Git updates.
+For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.3`; tag installs do not provide managed Git updates.
 
 ### Native worker availability
 
@@ -51,6 +51,22 @@ The official client uses Windows `%LOCALAPPDATA%/Roblox/mcp.bat` through `cmd.ex
 Chrrxs launches `npx -y @chrrxs/robloxstudio-mcp@latest --auto-install-plugin`. This downloads/runs the current upstream package and may install/update its Studio plugin. Review that trust choice before selecting the mode. Restart Studio when required. Node/npm must be visible to GUI-launched DSH, not merely an interactive terminal. The MCP SDK handles Windows npm shims.
 
 Enable native Script Sync for the intended project. Official `studio_id` and Chrrxs `instance_id` are distinct: resolve each independently. One operator coordinates both bridges through messages. Automatic reconnect is disabled so failures are diagnosed before retrying.
+
+### Chrrxs structured-result compatibility (1.0.3)
+
+Chrrxs 3.4.3's modern MCP response path can return `content: []` with the actual data in `structuredContent`. DSH rc2 retains that data but renders only `content`, producing `returned no model-visible content`. The published rc3 adapter source has the same rendering path. This message does **not** establish a proxy failure or a disconnected Studio.
+
+The bundle now mounts a small result adapter inside Roblox sessions. For successful Chrrxs calls with structured-only data and the exact empty DSH presentation, it exposes the existing structured data as JSON text. It neither calls Studio again nor changes canonical results, failures, images, other servers, or downstream policy decisions. Already-visible results are left alone. This is installed bundle code, not a patch inside DSH's installation, so replacing the DSH application does not overwrite it. Future breaking plugin API changes still require compatibility testing; no plugin can guarantee compatibility with every future release.
+
+After updating, fully restart DSH and create a new Roblox session. Call `get_connected_instances` read-only. A visible empty instance list is a valid result, not proof of a connected Studio; follow its diagnostics. Resolve current instance IDs rather than reusing IDs from an earlier session. If the old placeholder persists, report the DSH and bundle versions and confirm the new preset is mounted. Do not repeatedly replay mutation calls whose outcome is unknown. Auto-review JSON errors that say the body was not executed are separate and are not repaired by this adapter.
+
+### Multiple clients and cleanup limitations
+
+The upstream bridge uses one primary on its default local port, with additional servers entering proxy mode. Another application's primary is not by itself an error. Inspect upstream status or stderr without exposing credentials; do not kill other applications, change MCP configuration, or reinstall the Studio plugin as an automatic repair. Never print or include the contents of `~/.robloxstudio-mcp/auth-token` in logs or bug reports. This bundle's compatibility adapter does not read that file.
+
+Do not set a private `ROBLOX_STUDIO_PORT` as a default workaround: upstream auto-install can rewrite the installed Studio plugin for that port. Port changes and Studio-plugin modifications require the user's explicit approval.
+
+DSH rc2 delegates MCP process cleanup to the SDK, which closes stdin and signals the direct child; this does not guarantee termination of an entire npm launcher process tree on Windows or macOS. This release fixes result visibility, **not** the Host's process-lifecycle contract. Ending a turn or closing a UI tab is not evidence of agent-scope disposal. Report confirmed leftover processes to DSH with redacted lifecycle evidence; only stop processes the user explicitly authorizes. Clean-machine primary/proxy Studio smoke tests and cross-platform disposal tests remain required before claiming those acceptance checks pass.
 
 ## Workflow
 

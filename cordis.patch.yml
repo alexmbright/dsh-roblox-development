@@ -1,4 +1,4 @@
-# Configuration-only, derived from the installed standard preset. Host services remain external.
+# Derived from the standard preset, with agent-scoped MCP result compatibility. Host services remain external.
 - insert:
     - id: preset-roblox
       name: '@deepseek-ai/dsh-agent-preset'
@@ -8,6 +8,8 @@
         description: Task-specific model tiers, upstream Roblox skills, and a single Studio operator.
         order: 20
         plugins:
+          - id: roblox-mcp-result-compat
+            name: '@local/dsh-roblox-tiered'
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
