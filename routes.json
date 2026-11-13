@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 2,
+  "kind": "advisory-role-aware-task-policy",
+  "runtimeRouter": false,
+  "execution": "native-subagents",
+  "initialReadyWorkers": 2,
+  "scaleAfterMeasurement": [3, 4],
+  "brain": {
+    "checkout": "~/.cache/dsh-roblox-development/roblox-brain",
+    "updatePolicy": "upstream-default-branch-fast-forward-before-work",
+    "repository": "https://github.com/TabooHarmony/roblox-brain.git",
+    "updater": "scripts/update-brain.mjs",
+    "libraries": ["core", "gameplay", "design", "tools"],
+    "vendored": false
+  },
+  "permissions": "normal-dsh-access-controls-no-custom-guard",
+  "studioOperator": "message-coordinated-single-operator",
+  "pathOwnership": "cooperative-not-hard-enforced",
+  "requireDiscovery": true,
+  "requireExplicitEffort": true,
+  "automaticModelSwitch": false,
+  "roles": {
+    "planner": {
+      "fast": [{"provider": "xiaomi", "model": "mimo-v2.6-pro", "reasoning_effort": "high"}],
+      "standard": [{"provider": "claude", "model": "claude-sonnet-5-5", "reasoning_effort": "high"}],
+      "expert": [{"provider": "claude", "model": "claude-opus-5-5", "reasoning_effort": "high"}]
+    },
+    "scout": {
+      "fast": [{"provider": "deepseek-account", "model": "deepseek-flash", "reasoning_effort": "low"}],
+      "standard": [{"provider": "xiaomi", "model": "mimo-v2.6-flash", "reasoning_effort": "high"}],
+      "expert": [{"provider": "claude", "model": "claude-sonnet-5-5", "reasoning_effort": "high"}]
+    },
+    "implementer": {
+      "fast": [{"provider": "xiaomi", "model": "mimo-v2.6-pro", "reasoning_effort": "high", "provisional": true, "restriction": "Bounded implementation only after discovery and project-specific validation."}],
+      "standard": [{"provider": "claude", "model": "claude-sonnet-5-5", "reasoning_effort": "high"}],
+      "expert": [{"provider": "claude", "model": "claude-opus-5-5", "reasoning_effort": "high"}]
+    },
+    "reviewer": {
+      "fast": [{"provider": "deepseek-account", "model": "deepseek-flash", "reasoning_effort": "high", "restriction": "Preliminary only; cannot provide final independent approval."}],
+      "standard": [{"provider": "codex", "model": "gpt-6.1-sol", "reasoning_effort": "high"}],
+      "expert": [{"provider": "codex", "model": "gpt-6-astra", "reasoning_effort": "high"}]
+    },
+    "qa": {
+      "fast": [{"provider": "xiaomi", "model": "mimo-v2.6-flash", "reasoning_effort": "high"}],
+      "standard": [{"provider": "xiaomi", "model": "mimo-v2.6-pro", "reasoning_effort": "high"}],
+      "expert": [{"provider": "claude", "model": "claude-sonnet-5-5", "reasoning_effort": "high"}]
+    },
+    "studio": {
+      "fast": [{"provider":"xiaomi","model":"mimo-v2.6-flash","reasoning_effort":"high","restriction":"Bounded Studio inspection, screenshots, logs and explicit test procedures; holds exclusive delegated control."}],
+      "standard": [{"provider":"xiaomi","model":"mimo-v2.6-pro","reasoning_effort":"high"}],
+      "expert": [{"provider":"claude","model":"claude-sonnet-5-5","reasoning_effort":"high"},{"provider":"claude","model":"claude-opus-5-5","reasoning_effort":"high"}]
+    },
+    "visual": {
+      "fast": [{"provider": "deepseek-account", "model": "deepseek-flash", "reasoning_effort": "high"}],
+      "standard": [{"provider": "codex", "model": "gpt-6.1-terra", "reasoning_effort": "medium", "provisional": true, "restriction": "Discover exact route and validate visual task capability before use."}],
+      "expert": [{"provider": "claude", "model": "claude-sonnet-5-5", "reasoning_effort": "high"}, {"provider": "claude", "model": "claude-opus-5-5", "reasoning_effort": "high"}]
+    }
+  },
+  "independentReview": {"differentWorker": true, "crossProvider": true, "preliminaryIsApproval": false},
+  "escalation": {
+    "requires": ["failed acceptance evidence or documented complexity/risk", "bounded attempt summary", "new capability needed", "explicit new route and effort", "handoff preserving evidence and owned paths"],
+    "capacityFallback": "Unavailable/quota/latency is capacity evidence, not a competence failure. Discover a capability-equivalent route, record the reason, and explicitly dispatch or ask if none is available."
+  }
+}

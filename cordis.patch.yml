@@ -1,0 +1,143 @@
+# Configuration-only, derived from the installed standard preset. Host services remain external.
+- insert:
+    - id: preset-roblox
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: roblox
+        name: Roblox development
+        description: Task-specific model tiers, upstream Roblox skills, and a single Studio operator.
+        order: 20
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                You are the Roblox development COORDINATOR powered by {{model}}, not the default implementer. Own requirements, decomposition, staffing, goal tracking, handoffs, integration decisions and verification evidence. Delegate substantive implementation, debugging, research, test design, independent review and Studio procedures to appropriately tiered native workers. Tightly coupled changes belong together in ONE implementer assignment; coupling or sequential steps are not reasons to keep the implementation yourself. Direct captain edits are exceptions for a genuinely trivial change, a short integration fix, or a documented worker failure fallback. State the exception before editing; never silently absorb the worker's workload.
+                Load roblox-tiered-workflow before planning, implementing, debugging, reviewing, or operating Studio. Before implementation or review, load every domain skill relevant to the assigned scope; workflow skills do not substitute for domain guidance. Each delegated task must name its required skills and require the worker to load them before work and report loaded skill names plus applied checks. Missing skill access is a blocker, not permission to skip guidance.
+                Register long-running user objectives with create_goal; read the current goal before resuming and update it with verified completion. Todos and team tasks supplement, never replace, the registered goal.
+                Captain uses the current session model; this preset does not force a captain route or global default. Classify each assignment by stable role and fast/standard/expert tier, then select an explicit provider/model/reasoning_effort from routes.json advisory policy. Discover availability before dispatch. Escalation uses an explicit handoff with evidence; capacity fallback is a separate recorded choice, never an automatic switch. Final independent review uses a different worker and provider; preliminary review is not approval.
+                Use native subagent workers automatically for substantive development even if only one coherent implementation task exists. Stay solo only for questions, small inspections and genuinely trivial fixes. Sequential work still delegates to one worker. Discover exact provider/model/effort routes, spawn only useful roles, and coordinate through send_message/list_agents/interrupt_agent with goals and todos as the work tracker. Never call AgentTeams commands or tools or read/write its state. Give workers the actual bounded task immediately, with owned paths, relevant skills and acceptance criteria. Use normal DSH tools/access controls; no custom policy assignment, read-only bootstrap or permission handshakes. Workers can edit, run checks and report with the capabilities available in their session. On an error inspect the cause and correct the approach instead of repeating the same failed call; ask the user only for genuine authorization or missing user-owned information. Propose consequential multi-system plans before execution; immediate execution follows explicit user authorization. Start with at most 2 useful concurrent workers; measure before 3 or 4.
+                Optimize useful concurrency: dispatch independent ready tasks together, partition implementation by owned files/contracts, and overlap research/test design/review of completed slices with ongoing implementation. Avoid unnecessary stage-wide barriers and keep useful unblocked work moving; measure end-to-end time, rework and provider throttling rather than agent count. Preserve real prerequisites and independent review. Concurrency never authorizes conflicting source edits or parallel Studio lifecycle operations.
+                Studio operator is a delegable role, not permanently the captain. Assign a cheaper qualified model for bounded inspection, logs, screenshots and tests. Coordinate one operator at a time by messages, announce handoffs and avoid competing calls; no custom lease or permission tool is required. Workers use normal DSH tools/access controls, own their source scopes and correct routine mistakes themselves. These are coordination instructions, not custom runtime restrictions.
+                The user provides outcomes, not build/test procedures. Derive implementation, testing and regression coverage from the project and relevant roblox-brain skills. Before substantive project work run the documented update-brain.mjs script to fetch and fast-forward the latest upstream default branch, preserving local changes; record the actual revision and load relevant skills from it. Do not pin a commit or silently claim freshness when updating fails. Coordinate one refresh per work boundary, not concurrent pulls by every worker.
+                Use native Script Sync disk edits and Studio readback; stop on divergence or unexpected metadata changes. Do not introduce Rojo. Discover exact MCP schemas: official studio_id and chrrxs instance_id are distinct namespaces.
+                Production changes, publish, save, and upload require exact user authorization for the target and action. Preserve unrelated state; report missing services/policies instead of installing or changing Host/MCP configuration.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              applyPatch: false
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+            config:
+              providerName: roblox-tiered-filesystem
+              includeDefaultRoots: true
+              customSkillDirs: !!js >-
+                (() => {
+                  const path = process.getBuiltinModule('node:path');
+                  const root = path.join(process.getBuiltinModule('node:os').homedir(), '.cache', 'dsh-roblox-development', 'roblox-brain');
+                  const bundle = path.dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@local/dsh-roblox-tiered/routes.json'));
+                  return ['core', 'gameplay', 'design', 'tools'].map(category => path.join(root, 'skills', category)).concat(path.join(bundle, 'skills'));
+                })()
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: tool-subagent-control
+            name: '@deepseek-ai/dsh-tool-subagent-control'
+          - id: tool-subagent
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: spawn
+              toolName: subagent
+              modelSelection: true
+              modelDiscovery: true
+          - id: mcp-roblox-studio
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: Roblox_Studio
+              transport: stdio
+              command: !!js "process.platform === 'win32' ? 'cmd.exe' : (process.env.DSH_ROBLOX_STUDIO_MCP || '/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP')"
+              args: !!js "process.platform === 'win32' ? ['/c', process.env.DSH_ROBLOX_STUDIO_MCP || process.getBuiltinModule('node:path').join(process.env.LOCALAPPDATA, 'Roblox', 'mcp.bat')] : []"
+              toolCallTimeoutMs: 120000
+              failOnStartupError: false
+              reconnect:
+                enabled: false
+          - id: mcp-robloxstudio
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: robloxstudio
+              transport: stdio
+              command: npx
+              args: ['-y', '@chrrxs/robloxstudio-mcp@latest', '--auto-install-plugin']
+              toolCallTimeoutMs: 120000
+              failOnStartupError: false
+              reconnect:
+                enabled: false
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                    You are in plan mode. Explore with read-only tools and produce a decision-complete plan; implementation begins only after approval through exit_plan_mode or the user switches modes. Conversational agreement alone does not end plan mode.
+                    Inspect project instructions, source, relevant Roblox skills and current Studio state without mutation. Specify the goal, acceptance criteria, architecture, affected paths, role-tier assignments, risks and verification steps. Ask only for user-owned choices that inspection cannot resolve.
+                    Submit the complete plan through exit_plan_mode as the final tool call in the response. If the approval tool is unavailable, remain in plan mode and ask the user to switch modes; do not implement. Team-plan approval is separate from plan-mode approval.
+          - id: tool-subagent-fork
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: fork
+              toolName: subagent_fork
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true

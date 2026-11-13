@@ -1,0 +1,10 @@
+node_modules/
+.cache/
+.local/
+*.tgz
+.env
+.env.*
+.DS_Store
+*.log
+*.pem
+*.key
