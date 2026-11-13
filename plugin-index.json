@@ -8,6 +8,11 @@
     "author": "alexmbright",
     "repository": { "url": "https://github.com/alexmbright/dsh-roblox-development" },
     "versions": [{
+      "version": "1.0.2",
+      "publishTimestamp": 1794560735,
+      "engines": { "dsh": ">=0.2.2-rc.2 <0.3.0" },
+      "source": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git", "commit": "ecd2d7a557878f6dd4677dbd178592e26bb2c3db" }
+    }, {
       "version": "1.0.1",
       "publishTimestamp": 1794551462,
       "source": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git", "commit": "48827507baf9cda7cec73455d813ddef45cfaf89" }
