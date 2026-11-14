@@ -2,6 +2,10 @@
 
 DSH preset bundle with scoped MCP result compatibility `@local/dsh-roblox-tiered` for Windows and macOS. Captain coordinates native workers, uses role-aware model routing, and selects current upstream roblox-brain skills. No custom permission guards, Studio locks, AgentTeams, or Rojo.
 
+## Compatibility
+
+Version 1.0.4 explicitly advertises compatibility with **DSH 0.2.2-rc.2 and 0.2.2-rc.3**. The existing engine range already permits rc3; it remains unchanged so rc2 users can update too. After upgrading Windows Desktop to rc3, the installed 1.0.3 bundle remained enabled, and a synthetic check against the actual packaged rc3 MCP adapter confirmed visible text and structured-only output with canonical data preserved. Version 1.0.4 changes metadata/documentation only, not the compatibility adapter. Live Studio connectivity, macOS runtime behavior, and whole-process-tree cleanup remain separate unverified checks.
+
 ## Install
 
 Prerequisites: DeepSeek Harness 0.2.2-rc.2 or newer within the 0.2.x series, Git, Node.js 22+ with npm/npx visible to DSH, Roblox Studio, and your model-provider accounts signed into DSH. Repository access does not transfer credentials.
@@ -30,7 +34,7 @@ https://raw.githubusercontent.com/alexmbright/dsh-roblox-development/main/plugin
 
 Install the Roblox bundle from that index. Each version uses an immutable full commit SHA, which lets DSH manage Git updates and rollback. An earlier install from an unpinned GitHub URL or a tag needs a one-time migration: remove only `@local/dsh-roblox-tiered`, then install its current version from the index. Do not remove unrelated plugins. Subsequent releases advertised by the index can be updated in the app; a GitHub tag alone does not advertise an update.
 
-For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.3`; tag installs do not provide managed Git updates.
+For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.4`; tag installs do not provide managed Git updates.
 
 ### Native worker availability
 

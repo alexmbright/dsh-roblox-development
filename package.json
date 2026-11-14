@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-roblox-tiered",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
-  "description": "Roblox Studio preset with evidence-driven per-task model tiers and a single Studio operator.",
+  "description": "Roblox Studio preset for DSH rc2/rc3 with evidence-driven model tiers and structured-result compatibility.",
   "license": "MIT",
   "exports": {
     ".": "./index.js",
