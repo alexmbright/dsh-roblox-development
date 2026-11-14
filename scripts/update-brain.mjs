@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 export const UPSTREAM = 'https://github.com/TabooHarmony/roblox-brain.git';
-export const DEFAULT_REPO = path.join(homedir(), '.cache', 'dsh-roblox-development', 'roblox-brain');
+// Optional maintainer utility only; ordinary sessions use vendor/roblox-brain.
+export const DEFAULT_REPO = path.join(process.cwd(), '.dsh', 'roblox', 'maintenance', 'roblox-brain');
 
 // Never include git output or command arguments in errors: either can contain credentials.
 function git(repo, args) {

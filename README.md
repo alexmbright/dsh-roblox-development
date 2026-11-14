@@ -1,6 +1,6 @@
 # Roblox development for DSH
 
-DSH preset bundle with scoped MCP result compatibility `@alexmbright/dsh-roblox-development` for Windows and macOS. Captain coordinates native workers, uses role-aware model routing, and selects current upstream roblox-brain skills. No custom permission guards, Studio locks, AgentTeams, or Rojo.
+DSH preset bundle `@alexmbright/dsh-roblox-development` with workspace-local routine tooling, pinned offline Roblox skills, explicit native-worker routes, and scoped MCP result compatibility. Captain coordinates workers and one Studio operator. No Studio locks, AgentTeams, or Rojo.
 
 ## Compatibility
 
@@ -8,7 +8,9 @@ Version 1.0.4 explicitly advertises compatibility with **DSH 0.2.2-rc.2 and 0.2.
 
 ## Install
 
-Prerequisites: DeepSeek Harness 0.2.2-rc.2 or newer within the 0.2.x series, Git, Node.js 22+ with npm/npx visible to DSH, Roblox Studio, and your model-provider accounts signed into DSH. Repository access does not transfer credentials.
+Prerequisites: DeepSeek Harness Desktop 0.2.2-rc.3, Roblox Studio installed and signed in, and your model-provider accounts signed into DSH. A GitHub-spec installation uses Git through DSH's package installer. System Node/npm/npx, Rokit, Lune, StyLua and Selene are not runtime prerequisites: the bundle uses DSH's packaged runtime and automatically provisions its pinned command-line tools. Repository access does not transfer credentials.
+
+Native toolchain targets in this release: **Windows x64 and Apple Silicon macOS**. The pinned Selene/Luau macOS assets are ARM64-only, so Intel macOS and Windows ARM64 fail with an explicit unsupported-platform setup message rather than silently installing the wrong architecture. macOS assets are checksum-verified; a live Mac smoke test remains required.
 
 **Fully quit DSH Desktop**, then run in Terminal:
 
@@ -36,25 +38,41 @@ https://raw.githubusercontent.com/alexmbright/dsh-roblox-development/main/plugin
 
 Install the Roblox bundle from that index. Each version uses an immutable full commit SHA, which lets DSH manage Git updates and rollback. An earlier install from an unpinned GitHub URL or a tag needs a one-time migration: remove only `@local/dsh-roblox-tiered`, then install its current version from the index. Do not remove unrelated plugins. Subsequent releases advertised by the index can be updated in the app; a GitHub tag alone does not advertise an update.
 
-For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.5`; tag installs do not provide managed Git updates.
+Version **1.1.0** includes the self-provisioning toolchain. Install its immutable entry from the plugin index for managed updates, or use `github:alexmbright/dsh-roblox-development#v1.1.0` for a fixed tag install. Tag installs do not provide managed Git updates.
 
 ### Native worker availability
 
-The preset uses DSH's native `spawn` and `fork` tools and the host's native backends. Version 1.0.2 updates rc2 compatibility metadata and removes the stale `interrupt_agent` reference; it does not replace the spawn implementation. Check actual tool declarations and dispatch results before concluding that workers are unavailable. A Windows session reported successful native worker creation after correcting its earlier availability claim. macOS spawning still requires a live smoke test.
+The preset uses DSH's native model-selectable `spawn` tool and the host's native backend. Tiered dispatch refuses `fork`, which inherits the lead route. Version 1.0.2 updates rc2 compatibility metadata and removes the stale `interrupt_agent` reference; it does not replace the spawn implementation. Check actual tool declarations and dispatch results before concluding that workers are unavailable. A Windows session reported successful native worker creation after correcting its earlier availability claim. macOS spawning still requires a live smoke test.
 
 ## First session
 
 Open the intended project in Roblox Studio. Enable **Studio as MCP server** in Assistant → Manage MCP Servers. Ask DSH:
 
-> Refresh the Roblox skills, then verify shell selection, skill discovery, and both Studio MCP connections using read-only checks. Do not edit, save, publish, or upload anything.
+> Verify the pinned skill catalog and available worker routes using read-only discovery, then run routine toolchain smoke checks under workspace-write. Do not operate Studio, save, publish, or upload anything.
 
-The captain runs the installed updater before substantive work. It clones/refreshes upstream's default branch into `~/.cache/dsh-roblox-development/roblox-brain`; the filesystem skill provider discovers those roots automatically. This cache is outside the installed package and your game. Git/network access is required; a failed refresh must be reported rather than called current. Normal DSH permissions and approvals apply.
+The bundle includes all 29 roblox-brain skills pinned to `ceee4aaa5004502e2a51d78b3c33bba44d84742b`. The filesystem provider reads the installed snapshot directly. Starting a session and loading skills do not fetch upstream or create a home-directory checkout. Future skill refreshes are bundle maintenance, not part of game work.
+
+## One-install toolchain (1.1.0)
+
+On plugin activation, DSH downloads checksum-pinned upstream Lune 0.11.1, StyLua 2.6.0, Selene 0.32.0, Luau 0.745 and luau-lsp 1.70.1 into a shared profile-owned `roblox-toolchain` directory. This is plugin setup, not a game-worker permission escalation. Downloads are verified before safe ZIP extraction, staged atomically, and reused offline after executable checks. No tool is fetched through a floating latest tag, no install lifecycle script is required, and no project gets executable copies. First setup needs internet; routine runs do not repeat downloads. Interrupted installs recover through unique staged writes without shared locks; abandoned stages are ignored rather than deleted. Corrupt completed installs fail clearly rather than silently overwriting unknown files.
+
+The Chrrxs bridge is a pinned package dependency installed with the bundle, launched through DSH's packaged Node/Electron runtime—not npx. Its existing Studio-plugin auto-install remains explicit. Roblox Studio, official Studio MCP availability and provider sign-ins remain user/machine prerequisites. This bundle does not install Studio, silently publish a place, or copy sign-in state.
+
+## Routine tools without Full access
+
+Keep `workspace-write`. The scoped shell initializes tool state under `.dsh/roblox` inside the sandbox workspace: home/config/cache variables, npm and Python caches, and tool temp. The plugin-provisioned exact pinned executables run directly from their shared machine installation—no per-project executable copies or downloads. Existing project Rokit/Aftman pins are respected when their exact versions are installed; mismatches fail explicitly rather than silently switching versions. Writable-state bootstrap runs inside the sandbox. No global process environment, ACL policy, or Full-access setting changes. Routine `lune run`, Selene and StyLua check mode passed a real Windows workspace-write smoke test.
+
+Selene's Windows floating cache ignores environment-only redirection. The native shell preamble seeds the bundled Roblox standard next to the project config, preserving lint rules and existing standards. This works on a fresh machine without a global Selene cache. `lune run` works locally; unsupported Windows setup/REPL/cross-target paths are refused with an explanation. Details and first-machine setup are in [workspace tooling](skills/roblox-tiered-workflow/references/workspace-tooling.md).
+
+Automatic shell retries requesting `danger-full-access` are rejected before approval. This avoids the repeated prompt loop; it does not turn unsupported operations into successes. DSH internal runner temp/logs/output spills and Studio/MCP installations remain outside this wrapper. Persistent/user terminals do not inherit it; use the wrapped shell and its managed background mode for routine checks. Add `.dsh/roblox/` to the game's local ignore rules rather than committing caches. The bundle provisions its default toolchain once per device; custom project pins outside that set must already be installed or be handled as a separate setup change.
+
+Worker dispatch now requires an explicit provider/model/effort triple from the role matrix, with a recorded reason for off-matrix capacity fallback. Omitted routes no longer silently inherit the captain model; fork is refused for tiered dispatch. DSH authorizes model routes once per fresh top-level session. Changing the profile allowlist does not widen old sessions or their children: start a fresh top-level session if discovery exposes only the old lead route. The bundle supplies defaults for DSH's existing Host model-route settings row (no duplicate service). This default authorizes the role-matrix pairs for fresh top-level sessions profile-wide, including other presets; saved user settings still take precedence. It does not sign in accounts or widen existing session authorizations.
 
 ## Studio setup
 
 The official client uses Windows `%LOCALAPPDATA%/Roblox/mcp.bat` through `cmd.exe`, or macOS `/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP`. For nonstandard installations set `DSH_ROBLOX_STUDIO_MCP` in DSH's launch environment to the batch file (Windows) or executable (macOS).
 
-Chrrxs launches `npx -y @chrrxs/robloxstudio-mcp@latest --auto-install-plugin`. This downloads/runs the current upstream package and may install/update its Studio plugin. Review that trust choice before selecting the mode. Restart Studio when required. Node/npm must be visible to GUI-launched DSH, not merely an interactive terminal. The MCP SDK handles Windows npm shims.
+Chrrxs launches the bundle's pinned `@chrrxs/robloxstudio-mcp` 3.4.3 dependency using DSH's packaged runtime with `--auto-install-plugin`. It may install/update its Studio plugin. Review that trust choice before selecting the mode, and restart Studio when required. System Node/npm/npx is not used for this bridge.
 
 Enable native Script Sync for the intended project. Official `studio_id` and Chrrxs `instance_id` are distinct: resolve each independently. One operator coordinates both bridges through messages. Automatic reconnect is disabled so failures are diagnosed before retrying.
 
@@ -78,7 +96,7 @@ DSH rc2 delegates MCP process cleanup to the SDK, which closes stdin and signals
 
 Describe the game outcome. Captain coordinates; workers implement, derive checks, repair failures, and report evidence. Coupled work can belong to one worker. [Workflow](skills/roblox-tiered-workflow/SKILL.md) links to domain selection and lifecycle guidance. [Routes](routes.json) are advisory: discover available models and efforts before dispatch and adapt unavailable routes explicitly. No subscriptions are included.
 
-The updater preserves dirty, ahead, diverged and wrong-branch checkouts. Workers share the revision recorded by captain at the work boundary. Skills remain current rather than pinned to a bundled commit. See [third-party notices](THIRD-PARTY-NOTICES.md).
+Workers share the bundled skill revision recorded by captain. The snapshot is pinned, not a claim of current upstream freshness. Its full MIT notice is included; see [third-party notices](THIRD-PARTY-NOTICES.md).
 
 ## Development and release safety
 
@@ -88,7 +106,7 @@ cd dsh-roblox-development
 npm test
 ```
 
-No build or install lifecycle scripts are needed. `npm run setup` is an optional manual upstream skill refresh, not an installation prerequisite. Local development installation uses plugin_manager with the absolute directory.
+No build or install lifecycle scripts are needed. The legacy `npm run setup` remains an optional maintainer utility and defaults to a checkout under the current workspace; it is not invoked by sessions and does not change the installed skill pin. Local development installation uses plugin_manager with the absolute directory.
 
 The committed patch resolves installed resources at runtime; it contains no generated home paths. Keep caches, environment files, credentials, logs, game projects and session records out of Git and release attachments. Review tracked files and full history before release. Automated checks are defense in depth, not a guarantee that future files contain no secrets. `private: true` prevents accidental npm publication, not GitHub installation or repository visibility. This project is not affiliated with Roblox or its dependency authors.
 

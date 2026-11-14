@@ -1,12 +1,10 @@
 # Current upstream and domain guidance
 
-## Refresh once per bounded task
+## Use the bundled pin
 
-At the beginning of substantive project work, captain resolves the installed plugin root from this reference file (three directories above its containing directory), then runs `node "<plugin-root>/scripts/update-brain.mjs"` using that absolute path. The updater creates or refreshes `~/.cache/dsh-roblox-development/roblox-brain`, outside the installed package; it does not depend on the game's working directory. On first use, run it before selecting domain skills. The filesystem provider discovers the new roots automatically; verify the expected skills appear before dispatching workers.
+The installed bundle includes all 29 roblox-brain skills at commit `ceee4aaa5004502e2a51d78b3c33bba44d84742b`. Its `vendor/roblox-brain/provenance.json` records the source and license. The filesystem skill provider reads those installed roots directly; loading skills makes no home-directory checkout and requires no network.
 
-The updater follows the upstream default branch with a clean, fast-forward-only update. Preserve local edits: a dirty or diverged checkout needs reconciliation, not a reset or forced checkout. On failure, inspect the cause and report the actual revision/freshness; never claim an offline or failed fetch is current upstream. Ask the owner only when resolving local changes requires their decision.
-
-Record the resulting checkout SHA in session/task evidence. All workers use that same revision: include it in assignments and have workers load skills from that checkout. Captain owns refreshes; workers do not run concurrent pulls. During an active implementation or goal slice, keep the revision stable. Refresh at the next bounded task boundary and reassess relevant guidance then, rather than churning mid-implementation.
+Record that SHA in assignments and verification evidence. Captain and workers load the same installed snapshot. Treat it as pinned guidance, not a claim to be the latest upstream. Changes to the pin belong in a separately tested bundle update; ordinary game work does not run setup, update-brain.mjs, Git fetch, or package installation for skills.
 
 ## Select before work
 

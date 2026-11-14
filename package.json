@@ -1,19 +1,29 @@
 {
   "name": "@alexmbright/dsh-roblox-development",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Roblox Studio preset for DSH rc2/rc3 with evidence-driven model tiers and structured-result compatibility.",
+  "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",
   "license": "MIT",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
-    "./routes.json": "./routes.json"
+    "./routes.json": "./routes.json",
+    "./routing": "./routing.js",
+    "./workspace-runtime": "./workspace-runtime.js",
+    "./toolchain": "./toolchain/plugin.js",
+    "./toolchain/locale/*.json": "./locale/*.json",
+    "./toolchain/icon": "./icon.svg",
+    "./routing/locale/*.json": "./locale/*.json",
+    "./routing/icon": "./icon.svg",
+    "./workspace-runtime/locale/*.json": "./locale/*.json",
+    "./workspace-runtime/icon": "./icon.svg"
   },
-  "files": ["index.js", "plugin-index.json", "scripts/*.mjs", "cordis.patch.yml", "routes.json", "locale/*.json", "icon.svg", "skills/roblox-tiered-workflow/SKILL.md", "skills/roblox-tiered-workflow/references/*.md", "README.md", "LICENSE", "THIRD-PARTY-NOTICES.md", "tests/*.test.mjs"],
+  "files": ["index.js", "routing.js", "workspace-runtime.js", "workspace-env.js", "toolchain", "vendor", "plugin-index.json", "scripts/*.mjs", "cordis.patch.yml", "routes.json", "locale/*.json", "icon.svg", "skills/roblox-tiered-workflow/SKILL.md", "skills/roblox-tiered-workflow/references/*.md", "README.md", "LICENSE", "THIRD-PARTY-NOTICES.md", "tests/*.test.mjs"],
+  "dependencies": { "@chrrxs/robloxstudio-mcp": "3.4.3" },
   "engines": { "node": ">=22", "dsh": ">=0.2.2-rc.2 <0.3.0" },
   "repository": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git" },
-  "scripts": { "setup": "node scripts/setup.mjs", "test": "node --test tests/*.test.mjs" },
+  "scripts": { "setup": "node scripts/setup.mjs", "test": "node --test --test-isolation=none tests/*.test.mjs" },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }

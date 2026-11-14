@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/TabooHarmony/roblox-brain.git",
+  "commit": "ceee4aaa5004502e2a51d78b3c33bba44d84742b",
+  "skillCount": 29,
+  "libraries": ["core", "gameplay", "design", "tools"],
+  "updatePolicy": "pinned-bundle-release",
+  "license": "MIT",
+  "snapshot": "Unmodified skills/ and LICENSE from the locally verified clean upstream checkout. No session-start fetch."
+}

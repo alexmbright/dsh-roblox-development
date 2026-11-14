@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Roblox development",
-    "description": "Compatible with DSH 0.2.2-rc.2 and rc.3. Role-aware model tiers, refreshed Roblox skills, and a coordinated Studio operator. Includes session-scoped compatibility for Chrrxs structured-only MCP results without patching DSH. Does not fix Host process-tree cleanup."
+    "description": "Installs a shared checksum-pinned Roblox toolchain once for Windows x64 or Apple Silicon macOS, with no project executable copies. Includes offline skills, workspace-local routine tool state, explicit worker-route enforcement and a pinned Studio bridge using DSH’s runtime. Studio and account sign-ins remain prerequisites; DSH private runner temp is unchanged."
   }
 }

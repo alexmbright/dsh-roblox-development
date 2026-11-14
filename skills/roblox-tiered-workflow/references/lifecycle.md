@@ -4,7 +4,7 @@ Use the stages relevant to the requested outcome. Captain chooses and runs the b
 
 ## 1. Ground the outcome
 
-Read the current goal; create a persisted goal for a long objective and resume a disarmed goal only on the user's request. Todos track execution, not completion proof. Refresh roblox-brain once at the bounded task's start using [skill-selection.md](skill-selection.md), record the SHA and keep workers on that revision until the next task boundary.
+Read the current goal; create a persisted goal for a long objective and resume a disarmed goal only on the user's request. Todos track execution, not completion proof. Record the bundled roblox-brain pin from [skill-selection.md](skill-selection.md). Captain and workers use that installed snapshot; updating the bundle is a separate maintenance task, not a session-start requirement.
 
 Inspect repository instructions, architecture, scripts, tests, source mappings and the intended experience/place. Separate observed state from hypotheses. Derive observable acceptance criteria from the request and existing game. Ask only for unresolved user-owned choices, access or genuine ambiguity. Discovery is complete when target, scope, constraints and expected behavior are explicit.
 

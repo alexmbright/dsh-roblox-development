@@ -12,6 +12,6 @@ test('rc2 compatibility and native delegation guidance remain explicit', async (
   assert.match(patch, /Usually start with one or two workers/);
   assert.doesNotMatch(patch + teams, /at most 2|measure before 3 or 4|Increase toward three or four only/);
   assert.match(patch, /provider: spawn/);
-  assert.match(patch, /provider: fork/);
+  assert.doesNotMatch(patch, /provider: fork/);
   assert.match(teams, /distinguish the request from confirmed termination/);
 });

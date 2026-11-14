@@ -6,12 +6,12 @@
   "initialReadyWorkers": 2,
   "scaleAfterMeasurement": [3, 4],
   "brain": {
-    "checkout": "~/.cache/dsh-roblox-development/roblox-brain",
-    "updatePolicy": "upstream-default-branch-fast-forward-before-work",
+    "checkout": "vendor/roblox-brain",
+    "commit": "ceee4aaa5004502e2a51d78b3c33bba44d84742b",
+    "updatePolicy": "pinned-bundle-release",
     "repository": "https://github.com/TabooHarmony/roblox-brain.git",
-    "updater": "scripts/update-brain.mjs",
     "libraries": ["core", "gameplay", "design", "tools"],
-    "vendored": false
+    "vendored": true
   },
   "permissions": "normal-dsh-access-controls-no-custom-guard",
   "studioOperator": "message-coordinated-single-operator",
@@ -19,6 +19,15 @@
   "requireDiscovery": true,
   "requireExplicitEffort": true,
   "automaticModelSwitch": false,
+  "dispatchGuard": {
+    "enforced": true,
+    "mechanism": "@alexmbright/dsh-roblox-development/routing tools.guard",
+    "spawnTools": ["subagent"],
+    "forkTools": ["subagent_fork"],
+    "requiredRouteFields": ["provider", "model", "reasoning_effort"],
+    "capacityFallbackArgument": "capacityFallback",
+    "logsOffMatrixFallback": true
+  },
   "roles": {
     "planner": {
       "fast": [{"provider": "xiaomi", "model": "mimo-v2.6-pro", "reasoning_effort": "high"}],

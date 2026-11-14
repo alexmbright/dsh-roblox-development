@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Roblox Studio（分层）",
-    "description": "兼容 DSH 0.2.2-rc.2 和 rc.3。按角色选择模型层级，更新 Roblox 技能，并协调 Studio 操作。提供会话级 Chrrxs MCP 纯结构化结果兼容，无需修改 DSH 安装文件。不修复宿主进程树清理问题。"
+    "description": "一次安装共享的校验固定 Roblox 工具链（Windows x64 或 Apple Silicon macOS），不向项目复制可执行文件。内置离线技能、工作区工具状态、显式子智能体路由及使用 DSH 运行时的固定 Studio 桥接。仍需安装 Studio 并登录账号；不改变 DSH 私有临时目录。"
   }
 }

@@ -13,7 +13,7 @@ const refs = await Promise.all(['routing', 'teams', 'studio'].map(n => text(`ski
 const selection = await text('skills/roblox-tiered-workflow/references/skill-selection.md');
 const docs = [skill, ...refs, selection].join('\n');
 
-test('package declares the exact preset and scoped result compatibility without host changes', () => {
+test('package declares preset compatibility plus shared toolchain bootstrap', () => {
   assert.equal(manifest.name, '@alexmbright/dsh-roblox-development');
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml');
   assert.equal(manifest.type, 'module');
@@ -22,31 +22,36 @@ test('package declares the exact preset and scoped result compatibility without 
   assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@alexmbright\/dsh-roblox-development'/);
   assert.ok(patch.includes("resolve('@alexmbright/dsh-roblox-development/routes.json')"));
   assert.ok(!patch.includes('@local/dsh-roblox-tiered'));
-  assert.equal(manifest.dependencies, undefined);
+  assert.deepEqual(manifest.dependencies, { '@chrrxs/robloxstudio-mcp': '3.4.3' });
   assert.deepEqual(Object.keys(manifest.scripts), ['setup', 'test']);
-  assert.match(patch, /^- insert:\s*\n {4}- id: preset-roblox/m);
+  assert.match(patch, /^- insert:\s*\n {4}- id: roblox-toolchain/m);
+  assert.match(patch, /name: '@alexmbright\/dsh-roblox-development\/toolchain'/);
   assert.doesNotMatch(patch, /roblox-worker-guard|roblox_worker_policy|roblox_studio_control/);
   assert.match(patch, /^ {4}- id: preset-roblox/m);
   assert.match(patch, /^ {8}id: roblox$/m);
   assert.match(patch, /^ {8}name: Roblox development$/m);
   assert.equal((patch.match(/name: '@deepseek-ai\/dsh-agent-preset'/g) || []).length, 1);
   assert.doesNotMatch(patch, /dsh-(?:workflow|tool-workflow|agent-teams|llm)-/);
+  assert.match(patch, /^- id: subagent-model-selection-settings\n  config:\n    enabled: true/m);
   assert.equal((patch.match(/name: '@deepseek-ai\/dsh-mcp-client'/g)||[]).length, 2);
   assert.match(patch, /serverName: Roblox_Studio/);
   assert.match(patch, /serverName: robloxstudio/);
-  assert.match(patch, /@chrrxs\/robloxstudio-mcp@latest.*--auto-install-plugin/);
+  assert.match(patch, /resolve\('@chrrxs\/robloxstudio-mcp'\), '--auto-install-plugin'/);
+  assert.doesNotMatch(patch, /@latest|command: npx/);
   assert.doesNotMatch(patch, /\t|[A-Z]:[\\/]Users[\\/]|\/Users\/|\/home\//i);
-  assert.match(patch, /command: npx/);
+  assert.match(patch, /command: !!js process.execPath/);
   assert.match(patch, /StudioMCP/);
 });
 
 test('standard tool subset retains explicit native spawn model selection', () => {
-  for (const name of ['persona', 'agent-instructions', 'time-context', 'tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-jobs', 'command-goal', 'tool-goal', 'skill-filesystem', 'tool-skill', 'tool-subagent-control', 'tool-subagent', 'tool-ask-user', 'tool-todo', 'compaction-basic', 'command-compact', 'compaction-tool-result-pruner']) {
+  for (const name of ['persona', 'agent-instructions', 'time-context', 'tool-fs', 'tool-fs-search', 'tool-jobs', 'command-goal', 'tool-goal', 'skill-filesystem', 'tool-skill', 'tool-subagent-control', 'tool-subagent', 'tool-ask-user', 'tool-todo', 'compaction-basic', 'command-compact', 'compaction-tool-result-pruner']) {
     assert.ok(patch.includes(`'@deepseek-ai/dsh-${name}'`), name);
   }
   assert.match(patch, /provider: spawn\n\s+toolName: subagent\n\s+modelSelection: true\n\s+modelDiscovery: true/);
   assert.match(patch, /isolate:\n\s+compaction: true\n\s+toolResultPruner: true/);
-  assert.match(patch, /provider: fork/);
+  assert.doesNotMatch(patch, /provider: fork/);
+  assert.match(patch, /dsh-roblox-development\/workspace-runtime/);
+  assert.match(patch, /dsh-roblox-development\/routing/);
   assert.match(patch, /name: '@deepseek-ai\/dsh-plan-mode'\n\s+config:\n\s+section: \|\n\s+You are in plan mode\./);
   for (const name of ['command-goal','tool-goal','plan-mode','tool-web','tool-present']) assert.ok(patch.includes(`'@deepseek-ai/dsh-${name}'`), name);
   assert.doesNotMatch(patch, /tool-plugin-manager|tool-schedule/);
@@ -80,14 +85,14 @@ test('role-aware matrix specifies exact approved routes and explicit efforts', (
 });
 
 test('upstream libraries and installed skill roots are portable', () => {
-  assert.equal(routes.brain.commit, undefined);
-  assert.equal(routes.brain.updatePolicy, 'upstream-default-branch-fast-forward-before-work');
-  assert.equal(routes.brain.updater, 'scripts/update-brain.mjs');
-  assert.equal(routes.brain.vendored, false);
+  assert.equal(routes.brain.commit, 'ceee4aaa5004502e2a51d78b3c33bba44d84742b');
+  assert.equal(routes.brain.updatePolicy, 'pinned-bundle-release');
+  assert.equal(routes.brain.updater, undefined);
+  assert.equal(routes.brain.vendored, true);
   assert.deepEqual(routes.brain.libraries, ['core', 'gameplay', 'design', 'tools']);
   for (const library of routes.brain.libraries) assert.ok(patch.includes(library));
   assert.match(patch, /createRequire/);
-  assert.match(patch, /homedir/);
+  assert.match(patch, /path.join\(bundle, 'vendor', 'roblox-brain'\)/);
   assert.doesNotMatch(patch, /\{\{(?:BRAIN_DIR|PLUGIN_DIR)\}\}/);
   assert.match(docs, /update-brain\.mjs/);
 });
@@ -162,8 +167,8 @@ test('distribution list covers every authored resource and only intended runtime
   }
   const patterns = manifest.files.map(p => new RegExp('^' + p.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'));
   for (const file of await walk()) {
-    assert.ok(file === 'package.json' || patterns.some(p => p.test(file)), `unlisted: ${file}`);
-    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || ['index.js', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
+    assert.ok(file === 'package.json' || file.startsWith('vendor/') || file.startsWith('toolchain/') || patterns.some(p => p.test(file)), `unlisted: ${file}`);
+    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
   }
   assert.match(await text('THIRD-PARTY-NOTICES.md'), /Copyright \(c\) 2026 TabooHarmony/);
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_REPO, UPSTREAM, isTrustedOrigin, updateBrain } from '../scripts/update-brain.mjs';
@@ -55,8 +55,8 @@ function fixture(t) {
   return { repo, seed, remote, update, advance, localCommit };
 }
 
-test('import is silent and default checkout is a writable user cache', () => {
-  assert.equal(DEFAULT_REPO, path.join(homedir(), '.cache', 'dsh-roblox-development', 'roblox-brain'));
+test('import is silent and optional maintainer checkout stays in the workspace', () => {
+  assert.equal(DEFAULT_REPO, path.join(process.cwd(), '.dsh', 'roblox', 'maintenance', 'roblox-brain'));
   const url = new URL('../scripts/update-brain.mjs', import.meta.url).href;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url)})`], {
     encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024,

@@ -4,7 +4,7 @@ Captain coordinates substantive development rather than implementing by default.
 
 ## Dispatch real tasks
 
-1. Check existing native children before duplicating work. Select a discovered role/tier route and explicit effort using [routing.md](routing.md).
+1. Check existing native children before duplicating work. Select a discovered role/tier route and explicit effort using [routing.md](routing.md), then dispatch the exact provider/model/reasoning_effort triple on the spawn call; the dispatch guard admits nothing less.
 2. Start a worker with the actual bounded assignment immediately: outcome, owned paths or read-only inputs, prerequisites, brain SHA, required skills and expected evidence. Native workers use normal DSH shell, editing and other available tools under the session's ordinary permissions. There is no read-only readiness stage or custom permission-assignment step.
 3. Let implementers run their own builds and tests. Captain ensures all acceptance criteria have coverage, arranges integration checks and returns shared evidence to the implementer when another worker or the Studio operator must obtain it. A missing capability calls for a concrete handoff, not a user-run checklist.
 4. For Studio work, designate one operator through messages using [studio.md](studio.md). Other workers use snapshots or send bounded requests to that operator. This is cooperative coordination, not a custom lock or control-tool dependency.
