@@ -4,10 +4,15 @@
   "plugins": [{
     "name": "@local/dsh-roblox-tiered",
     "title": { "en": "Roblox development" },
-    "description": { "en": "Native worker coordination, advisory model tiers and Roblox Studio MCP." },
+    "description": { "en": "Compatible with DSH rc2/rc3: native worker coordination, advisory model tiers and Roblox Studio MCP." },
     "author": "alexmbright",
     "repository": { "url": "https://github.com/alexmbright/dsh-roblox-development" },
     "versions": [{
+      "version": "1.0.4",
+      "publishTimestamp": 1794614676,
+      "engines": { "dsh": ">=0.2.2-rc.2 <0.3.0" },
+      "source": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git", "commit": "8eec3b2c0d731529893486db0384c65f8fe064cc" }
+    }, {
       "version": "1.0.3",
       "publishTimestamp": 1794610359,
       "engines": { "dsh": ">=0.2.2-rc.2 <0.3.0" },
