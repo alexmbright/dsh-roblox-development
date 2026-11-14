@@ -1,6 +1,6 @@
 {
   "name": "@alexmbright/dsh-roblox-development",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",
@@ -24,6 +24,6 @@
   "dependencies": { "@chrrxs/robloxstudio-mcp": "3.4.3" },
   "engines": { "node": ">=22", "dsh": ">=0.2.2-rc.2 <0.3.0" },
   "repository": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git" },
-  "scripts": { "setup": "node scripts/setup.mjs", "test": "node --test --test-isolation=none tests/*.test.mjs" },
+  "scripts": { "setup": "node scripts/setup.mjs", "test": "node --experimental-test-isolation=none --test tests/*.test.mjs" },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }

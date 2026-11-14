@@ -277,7 +277,9 @@ test('symlink/junction cache ancestors are refused, without touching their targe
     assert.deepEqual(await fs.readdir(real), []);
   } finally {
     assert.equal(path.dirname(path.resolve(linked)), path.resolve(sandbox));
-    await fs.rmdir(linked);
+    // POSIX rmdir refuses a symlink with ENOTDIR; a Windows junction must be unlinked with rmdir.
+    if (process.platform === 'win32') await fs.rmdir(linked);
+    else await fs.unlink(linked);
   }
 });
 test('malformed receipts are corrupt rather than throwing a JSON shape exception', async t => {

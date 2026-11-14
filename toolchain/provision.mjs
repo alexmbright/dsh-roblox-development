@@ -8,6 +8,13 @@ const flights = new Map();
 const MARKER = '.complete.json';
 const MAX_MARKER_BYTES = 128 * 1024;
 const SUPPORTED = new Set(['win32-x64', 'darwin-x64', 'darwin-arm64', 'linux-x64', 'linux-arm64']);
+// Platform layout symlinks, not attacker-controlled ones. macOS ships /var and /tmp as
+// links into /private, and some Linux images link /tmp, so a profile-owned root under
+// either would otherwise be refused before the walk reached a single owned segment.
+// These prefixes are followed and rebased onto their canonical target; every segment at
+// or below the profile-owned root stays strictly symlink-free, so a link inside the
+// cache path is still rejected. Windows has no equivalent layout link, so it stays strict.
+const SYSTEM_SYMLINKS = new Set(process.platform === 'darwin' ? ['/var', '/tmp'] : process.platform === 'linux' ? ['/tmp'] : []);
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const digestPattern = /^[a-f0-9]{64}$/;
 const segmentPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
@@ -65,7 +72,7 @@ function selection({ root, manifest, platform = process.platform, arch = process
 async function maybeStat(value) {
   try { return await fs.lstat(value); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
-/** Reject symbolic links / Windows junctions in every existing cache ancestor. */
+/** Reject symbolic links / Windows junctions in every existing cache ancestor, following only the platform's own layout links. */
 async function safeDirectories(directory, create = false) {
   const absolute = path.resolve(directory);
   const parsed = path.parse(absolute);
@@ -78,6 +85,14 @@ async function safeDirectories(directory, create = false) {
       stat = await maybeStat(current);
     }
     if (!stat) return false;
+    if (SYSTEM_SYMLINKS.has(current)) {
+      // Follow the layout link and rebase onto where the OS actually resolves it, so the
+      // segments below it are compared against their canonical form rather than the link.
+      const base = await fs.realpath(current);
+      if (!(await fs.stat(base)).isDirectory()) fail('UNSAFE_CACHE_PATH', `Toolchain ancestor is not a real directory: ${current}`);
+      current = base;
+      continue;
+    }
     let canonical;
     try { canonical = await fs.realpath(current); }
     catch (error) { if (error.code === 'ENOENT' && !create) return false; throw error; }
@@ -92,8 +107,12 @@ async function safeFile(file, maxBytes) {
   await safeDirectories(path.dirname(file));
   const stat = await maybeStat(file);
   if (!stat) return null;
+  // Compare canonically on both sides: the parent may legitimately traverse a platform
+  // layout link such as /var, so the literal path and the resolved path differ above the
+  // owned root. A link for the file itself still differs from its canonical directory
+  // plus own name, so the identity check keeps its meaning.
   const canonical = await fs.realpath(file);
-  const expected = path.resolve(file);
+  const expected = path.join(await fs.realpath(path.dirname(file)), path.basename(file));
   const same = process.platform === 'win32' ? canonical.toLowerCase() === expected.toLowerCase() : canonical === expected;
   if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1 || stat.size > maxBytes || !same) fail('UNSAFE_CACHE_PATH', `Unexpected toolchain file type/size: ${file}`);
   // The profile root is trusted. lstat/realpath plus handle identity detect accidental
