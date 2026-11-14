@@ -4,10 +4,15 @@
   "plugins": [{
     "name": "@alexmbright/dsh-roblox-development",
     "title": { "en": "Roblox development" },
-    "description": { "en": "Compatible with DSH rc2/rc3. Replaces @local/dsh-roblox-tiered: remove the old bundle before installing. Native worker coordination, advisory model tiers and Roblox Studio MCP." },
+    "description": { "en": "Self-provisioning Roblox toolchain for Windows x64 and Apple Silicon macOS, offline pinned skills, workspace-local routine state and explicit worker routes. Uses DSH's runtime; Studio and provider sign-ins remain prerequisites. Replaces @local/dsh-roblox-tiered: remove the old bundle before installing." },
     "author": "alexmbright",
     "repository": { "url": "https://github.com/alexmbright/dsh-roblox-development" },
     "versions": [{
+      "version": "1.1.0",
+      "publishTimestamp": 1794683302,
+      "engines": { "dsh": ">=0.2.2-rc.2 <0.3.0" },
+      "source": { "type": "git", "url": "https://github.com/alexmbright/dsh-roblox-development.git", "commit": "e3bf45bce1ab42b466c4392e06167c228fe21840" }
+    }, {
       "version": "1.0.5",
       "publishTimestamp": 1794615230,
       "engines": { "dsh": ">=0.2.2-rc.2 <0.3.0" },
