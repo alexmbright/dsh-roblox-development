@@ -1,6 +1,6 @@
 # Roblox development for DSH
 
-DSH preset bundle with scoped MCP result compatibility `@local/dsh-roblox-tiered` for Windows and macOS. Captain coordinates native workers, uses role-aware model routing, and selects current upstream roblox-brain skills. No custom permission guards, Studio locks, AgentTeams, or Rojo.
+DSH preset bundle with scoped MCP result compatibility `@alexmbright/dsh-roblox-development` for Windows and macOS. Captain coordinates native workers, uses role-aware model routing, and selects current upstream roblox-brain skills. No custom permission guards, Studio locks, AgentTeams, or Rojo.
 
 ## Compatibility
 
@@ -26,6 +26,8 @@ The installation is profile-wide. Existing sessions retain their previous preset
 
 ### Updates inside DSH
 
+Version 1.0.5 renames the package from `@local/dsh-roblox-tiered` to **`@alexmbright/dsh-roblox-development`**. The index URL and preset ID (`roblox`) stay the same. This is a one-time package-ID migration, not an in-place version update: remove the old bundle before installing the new entry, so both packages do not register the same preset. Restart DSH and use a new Roblox session afterward. On another machine (including macOS), repeat that migration there. Previous releases retain their old package identity; do not install both identities together.
+
 Add this source yourself in DSH's custom plugin indexes UI (enable the optional custom plugin indexes bundle if needed):
 
 ```text
@@ -34,7 +36,7 @@ https://raw.githubusercontent.com/alexmbright/dsh-roblox-development/main/plugin
 
 Install the Roblox bundle from that index. Each version uses an immutable full commit SHA, which lets DSH manage Git updates and rollback. An earlier install from an unpinned GitHub URL or a tag needs a one-time migration: remove only `@local/dsh-roblox-tiered`, then install its current version from the index. Do not remove unrelated plugins. Subsequent releases advertised by the index can be updated in the app; a GitHub tag alone does not advertise an update.
 
-For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.4`; tag installs do not provide managed Git updates.
+For manual installation of this release, use `github:alexmbright/dsh-roblox-development#v1.0.5`; tag installs do not provide managed Git updates.
 
 ### Native worker availability
 

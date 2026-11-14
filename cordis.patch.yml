@@ -9,7 +9,7 @@
         order: 20
         plugins:
           - id: roblox-mcp-result-compat
-            name: '@local/dsh-roblox-tiered'
+            name: '@alexmbright/dsh-roblox-development'
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
@@ -59,7 +59,7 @@
                 (() => {
                   const path = process.getBuiltinModule('node:path');
                   const root = path.join(process.getBuiltinModule('node:os').homedir(), '.cache', 'dsh-roblox-development', 'roblox-brain');
-                  const bundle = path.dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@local/dsh-roblox-tiered/routes.json'));
+                  const bundle = path.dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@alexmbright/dsh-roblox-development/routes.json'));
                   return ['core', 'gameplay', 'design', 'tools'].map(category => path.join(root, 'skills', category)).concat(path.join(bundle, 'skills'));
                 })()
           - id: tool-skill

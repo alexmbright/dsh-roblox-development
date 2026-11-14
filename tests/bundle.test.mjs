@@ -14,12 +14,14 @@ const selection = await text('skills/roblox-tiered-workflow/references/skill-sel
 const docs = [skill, ...refs, selection].join('\n');
 
 test('package declares the exact preset and scoped result compatibility without host changes', () => {
-  assert.equal(manifest.name, '@local/dsh-roblox-tiered');
+  assert.equal(manifest.name, '@alexmbright/dsh-roblox-development');
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml');
   assert.equal(manifest.type, 'module');
   assert.equal(manifest.exports['.'], './index.js');
   assert.ok(manifest.files.includes('index.js'));
-  assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@local\/dsh-roblox-tiered'/);
+  assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@alexmbright\/dsh-roblox-development'/);
+  assert.ok(patch.includes("resolve('@alexmbright/dsh-roblox-development/routes.json')"));
+  assert.ok(!patch.includes('@local/dsh-roblox-tiered'));
   assert.equal(manifest.dependencies, undefined);
   assert.deepEqual(Object.keys(manifest.scripts), ['setup', 'test']);
   assert.match(patch, /^- insert:\s*\n {4}- id: preset-roblox/m);

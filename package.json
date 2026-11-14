@@ -1,6 +1,6 @@
 {
-  "name": "@local/dsh-roblox-tiered",
-  "version": "1.0.4",
+  "name": "@alexmbright/dsh-roblox-development",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "description": "Roblox Studio preset for DSH rc2/rc3 with evidence-driven model tiers and structured-result compatibility.",
