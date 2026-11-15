@@ -15,7 +15,7 @@
  * dispatch is denied outright because forked children always inherit the
  * captain model and cannot carry a tier route. The guard never mutates a call,
  * never switches models, and never touches DSH access controls.
- * @module @alexmbright/dsh-roblox-development/routing
+ * @module @alexturbo/dsh-roblox-development/routing
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';

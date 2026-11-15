@@ -1,6 +1,6 @@
 # Roblox development for DSH
 
-DSH preset bundle `@alexmbright/dsh-roblox-development` with workspace-local routine tooling, pinned offline Roblox skills, an editable role/tier routing matrix, pinned-binary tool executors, and scoped MCP result compatibility. Captain coordinates workers and one Studio operator. No Studio locks, AgentTeams, or Rojo.
+DSH preset bundle `@alexturbo/dsh-roblox-development` with workspace-local routine tooling, pinned offline Roblox skills, an editable role/tier routing matrix, pinned-binary tool executors, and scoped MCP result compatibility. Captain coordinates workers and one Studio operator. No Studio locks, AgentTeams, or Rojo.
 
 ## Compatibility
 
@@ -39,7 +39,7 @@ Native toolchain targets: `win32-x64`, `darwin-arm64`, `linux-x64`, plus partial
 
 ```sh
 # registry install (updates in place from the Installed tab)
-dsh plugin --profile desktop add "@alexmbright/dsh-roblox-development"
+dsh plugin --profile desktop add "@alexturbo/dsh-roblox-development"
 
 # or pin an exact Git commit through DSH's Git installer
 dsh plugin --profile desktop add "github:alexmbright/dsh-roblox-development"
@@ -59,7 +59,7 @@ The installation is profile-wide. Existing sessions retain their previous preset
 
 ### Updates inside DSH
 
-Version 1.0.5 renames the package from `@local/dsh-roblox-tiered` to **`@alexmbright/dsh-roblox-development`**. The index URL and preset ID (`roblox`) stay the same. This is a one-time package-ID migration, not an in-place version update: remove the old bundle before installing the new entry, so both packages do not register the same preset. Restart DSH and use a new Roblox session afterward. On another machine (including macOS), repeat that migration there. Previous releases retain their old package identity; do not install both identities together.
+Version 1.0.5 renames the package from `@local/dsh-roblox-tiered` to **`@alexturbo/dsh-roblox-development`**. The index URL and preset ID (`roblox`) stay the same. This is a one-time package-ID migration, not an in-place version update: remove the old bundle before installing the new entry, so both packages do not register the same preset. Restart DSH and use a new Roblox session afterward. On another machine (including macOS), repeat that migration there. Previous releases retain their old package identity; do not install both identities together.
 
 Add this source yourself in DSH's custom plugin indexes UI (enable the optional custom plugin indexes bundle if needed):
 

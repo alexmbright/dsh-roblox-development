@@ -29,7 +29,7 @@
   "automaticModelSwitch": false,
   "dispatchGuard": {
     "enforced": true,
-    "mechanism": "@alexmbright/dsh-roblox-development/routing tools.guard",
+    "mechanism": "@alexturbo/dsh-roblox-development/routing tools.guard",
     "spawnTools": [
       "subagent"
     ],

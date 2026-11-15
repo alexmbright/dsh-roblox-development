@@ -10,7 +10,7 @@
  *
  * Every invocation is the provisioned executable for this platform, at the pinned version —
  * never a PATH lookup, never a floating install.
- * @module @alexmbright/dsh-roblox-development/toolrun
+ * @module @alexturbo/dsh-roblox-development/toolrun
  */
 
 import { homedir } from 'node:os';

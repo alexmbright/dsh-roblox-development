@@ -14,18 +14,18 @@ const selection = await text('skills/roblox-tiered-workflow/references/skill-sel
 const docs = [skill, ...refs, selection].join('\n');
 
 test('package declares preset compatibility plus shared toolchain bootstrap', () => {
-  assert.equal(manifest.name, '@alexmbright/dsh-roblox-development');
+  assert.equal(manifest.name, '@alexturbo/dsh-roblox-development');
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml');
   assert.equal(manifest.type, 'module');
   assert.equal(manifest.exports['.'], './index.js');
   assert.ok(manifest.files.includes('index.js'));
-  assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@alexmbright\/dsh-roblox-development'/);
-  assert.ok(patch.includes("resolve('@alexmbright/dsh-roblox-development/routes.json')"));
+  assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@alexturbo\/dsh-roblox-development'/);
+  assert.ok(patch.includes("resolve('@alexturbo/dsh-roblox-development/routes.json')"));
   assert.ok(!patch.includes('@local/dsh-roblox-tiered'));
   assert.deepEqual(manifest.dependencies, { '@chrrxs/robloxstudio-mcp': '3.4.3' });
   assert.deepEqual(Object.keys(manifest.scripts), ['setup', 'test']);
-  assert.match(patch, /^- insert:\s*\n {4}- id: roblox-routing-controls\n {6}name: '@alexmbright\/dsh-roblox-development\/routing-controls'\n {4}- id: roblox-toolchain/m);
-  assert.match(patch, /name: '@alexmbright\/dsh-roblox-development\/toolchain'/);
+  assert.match(patch, /^- insert:\s*\n {4}- id: roblox-routing-controls\n {6}name: '@alexturbo\/dsh-roblox-development\/routing-controls'\n {4}- id: roblox-toolchain/m);
+  assert.match(patch, /name: '@alexturbo\/dsh-roblox-development\/toolchain'/);
   assert.doesNotMatch(patch, /roblox-worker-guard|roblox_worker_policy|roblox_studio_control/);
   assert.match(patch, /^ {4}- id: preset-roblox/m);
   assert.match(patch, /^ {8}id: roblox$/m);

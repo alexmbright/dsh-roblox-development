@@ -2,7 +2,7 @@
   "format": 1,
   "title": { "en": "Alex Bright Roblox plugins" },
   "plugins": [{
-    "name": "@alexmbright/dsh-roblox-development",
+    "name": "@alexturbo/dsh-roblox-development",
     "title": { "en": "Roblox development" },
     "description": { "en": "Self-provisioning Roblox toolchain for Windows x64 and Apple Silicon macOS, offline pinned skills, workspace-local routine state and explicit worker routes. Uses DSH's runtime; Studio and provider sign-ins remain prerequisites. Replaces @local/dsh-roblox-tiered: remove the old bundle before installing." },
     "author": "alexmbright",

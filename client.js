@@ -6,7 +6,7 @@
  * has connected, so the panel can only offer models that can really be dispatched.
  */
 window.__ModuleLoader__.load({
-  id: '@alexmbright/dsh-roblox-development',
+  id: '@alexturbo/dsh-roblox-development',
   factory(require) {
     const React = require('react');
     const h = React.createElement;

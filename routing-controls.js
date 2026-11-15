@@ -10,7 +10,7 @@
  * shipped routes.json assigns it when that provider and model are connected, or a connected
  * model substituted automatically. That last step is what keeps a freshly installed profile
  * usable before anyone edits anything.
- * @module @alexmbright/dsh-roblox-development/routing-controls
+ * @module @alexturbo/dsh-roblox-development/routing-controls
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
