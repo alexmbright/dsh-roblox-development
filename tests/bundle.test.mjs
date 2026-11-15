@@ -22,7 +22,7 @@ test('package declares preset compatibility plus shared toolchain bootstrap', ()
   assert.match(patch, /plugins:\n {10}- id: roblox-mcp-result-compat\n {12}name: '@alexturbo\/dsh-roblox-development'/);
   assert.ok(patch.includes("resolve('@alexturbo/dsh-roblox-development/routes.json')"));
   assert.ok(!patch.includes('@local/dsh-roblox-tiered'));
-  assert.deepEqual(manifest.dependencies, { '@chrrxs/robloxstudio-mcp': '3.4.3' });
+  assert.deepEqual(manifest.dependencies, { '@chrrxs/robloxstudio-mcp': '3.4.4' });
   assert.deepEqual(Object.keys(manifest.scripts), ['setup', 'test']);
   assert.match(patch, /^- insert:\s*\n {4}- id: roblox-routing-controls\n {6}name: '@alexturbo\/dsh-roblox-development\/routing-controls'\n {4}- id: roblox-toolchain/m);
   assert.match(patch, /name: '@alexturbo\/dsh-roblox-development\/toolchain'/);

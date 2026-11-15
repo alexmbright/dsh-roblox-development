@@ -1,6 +1,6 @@
 {
   "name": "@alexturbo/dsh-roblox-development",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": false,
   "type": "module",
   "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",
@@ -47,7 +47,7 @@
     "tests/*.test.mjs"
   ],
   "dependencies": {
-    "@chrrxs/robloxstudio-mcp": "3.4.3"
+    "@chrrxs/robloxstudio-mcp": "3.4.4"
   },
   "engines": {
     "node": ">=22",
