@@ -115,13 +115,25 @@ Describe the game outcome; the captain coordinates and delegates. Workers implem
 
 Skill use is enforced, not advisory. Worker dispatch and file edits are refused until the lead has loaded the workflow skill and the relevant roblox-brain domain skills. Every worker prompt must state `Brain revision: <pinned SHA>`, `Required skills: <names>` and require a report of loaded skills and applied checks. Workers, including nested helpers, cannot edit until they have loaded their required skills, and only skills served from the pinned bundle count. A goal cannot be completed while any worker is missing one. Questions and lookups are never gated. See [skill-selection.md](skills/roblox-tiered-workflow/references/skill-selection.md#enforcement).
 
-The coordinator announces each dispatch and each finished worker, and ends every reply with a `Waiting on:` line. A live worker-status context, which changes only when a worker starts or finishes, keeps that line accurate.
+The coordinator announces each dispatch and each finished worker with its model and reasoning effort, and ends every reply with a `Waiting on:` line. A live worker-status context, which changes only when a worker starts or finishes, keeps that line accurate. A reply that announces a dispatch without the model and effort is sent back once for correction.
+
+### Visual quality gate
+
+Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` (copy [the template](docs/smaller-launch/VISUAL_GATE.md)), or when the `roblox-routing-guard` config sets `visualGate: on` (`off` disables it). When active, the runtime refuses:
+
+- any worker dispatch without a `Role: <role>/<tier>` line, or whose route belongs to a different cell;
+- a `visual/*` review without a screenshot or image path, without `Verdict: PASS|FAIL` and a checklist, or without naming the gate file;
+- writes to `VISUAL_GATE.md` by anyone except the visual worker;
+- worker prompts that touch Creator Store assets without the sourcing rule, and `insert_asset`/`generate_model` during a playtest;
+- `update_goal complete` on a visual objective (UI, art, scene, layout, looks…) unless the coordinator viewed a screenshot (`screen_capture`, `capture_screenshot`, `capture_device_matrix`, or `read_image` on a captured file) after the last client-source or asset change, a visual/standard or visual/expert review was dispatched after the last visual work, the gate passes [tools/check-visual-gate.mjs](tools/check-visual-gate.mjs) (bundled copy and the project's own copy, if any) with the coordinator's own visual worker as reviewer, and the asset-sourcing record matches the `search_assets`, `get_asset_thumbnail` and `get_asset_details` calls in the session logs.
+
+The check script exits 1 unless the gate has `Verdict: PASS`, a named visual reviewer, at least 3 screenshots, a fully checked checklist, a modified time newer than the newest file under the client source folders, and, for each art piece, 6+ queries, viewed candidates and real rejection reasons (scripts, triangles and pivots are fixable). While it fails, a status report that does not open with `visual gate FAILED`, or a "done/good/ready" claim about visuals without a fresh look, is sent back once for correction.
 
 Routes are advisory planning policy, not a runtime router, availability guarantee or fixed roster: discover what is available before dispatch and adapt explicitly when a route is unavailable. Quota or outage is capacity evidence, never proof of inadequate reasoning.
 
 ## Verification limits
 
-The suite (234 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
+The suite (260 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
 
 ## Development
 
@@ -139,6 +151,7 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.4.0** — opt-in visual quality gate (screenshot-before-accept, visual reviewer requirement, `tools/check-visual-gate.mjs`, asset-sourcing effort floor, report honesty); dispatches announced with model and effort.
 - **1.3.1** — per-tier reasoning effort picker in the routing panel.
 - **1.3.0** — roblox-brain skill use enforced (lead grounding, assignment contract, worker gate, `roblox_skill_audit`, verified goal completion); live worker status and coordinator announcements.
 - **1.2.1** — `@chrrxs/robloxstudio-mcp` 3.4.4.

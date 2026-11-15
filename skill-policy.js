@@ -183,11 +183,39 @@ export function pinnedSkillFrom(text, brain, expectedName) {
   return samePinnedDir(base, brain.dirs.get(name)) ? name : undefined;
 }
 
+/** Tool name without the `mcp__<server>__` prefix, so both Studio backends match. */
+export const baseToolName = name => (typeof name === 'string' && name.startsWith('mcp__') ? name.split('__').pop() : name);
+export const SCREENSHOT_TOOLS = ['screen_capture', 'capture_screenshot', 'capture_device_matrix'];
+const TRACKED_TOOLS = new Set([...SCREENSHOT_TOOLS, 'read_image', 'solo_playtest', 'multiplayer_playtest', 'start_stop_play',
+  'search_assets', 'search_asset', 'get_asset_thumbnail', 'get_asset_details', 'insert_asset', 'generate_model']);
+/** A read_image path counts as a screenshot only when it names a capture. */
+export const CAPTURED_FILE = /(?:^|[\\/])(?:screenshots?|captures?)[\\/]|screen[-_ ]?shot|screen[-_ ]?capture|capture|device[-_ ]?matrix/i;
+const ROLE_LINE = /^[ \t>*_-]*Role:[*_]*[ \t]*`?([a-z]+)\/(fast|standard|expert)\b/im;
+/** Parse the optional `Role: <role>/<tier>` line of an assignment. */
+export const parseRole = text => {
+  const match = ROLE_LINE.exec(typeof text === 'string' ? text : '');
+  return match ? { role: match[1].toLowerCase(), tier: match[2].toLowerCase() } : undefined;
+};
+const parseArgs = raw => {
+  try {
+    const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return value !== null && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+};
+const hasImage = content => Array.isArray(content) && content.some(block => block?.type === 'image');
+
 function freshState() {
   return {
     offset: 0,
     pendingSkill: new Map(),
-    pendingDispatch: new Set(),
+    pendingDispatch: new Map(),
+    pendingTracked: new Map(),
+    dispatchLog: [],
+    screenshots: [],
+    playing: false,
+    assets: { searches: [], thumbnails: new Set(), details: new Set(), changes: [] },
     loaded: new Set(),
     shadowed: new Set(),
     contracts: [],
@@ -206,7 +234,9 @@ function foldEvent(state, event, session, brain) {
           if (typeof name === 'string') state.pendingSkill.set(data.callId, name);
         } catch { /* malformed arguments never loaded a skill */ }
       } else if (data?.name === DISPATCH_TOOL) {
-        state.pendingDispatch.add(data.callId);
+        state.pendingDispatch.set(data.callId, parseArgs(data.arguments));
+      } else if (TRACKED_TOOLS.has(baseToolName(data?.name))) {
+        state.pendingTracked.set(data.callId, { tool: baseToolName(data.name), args: parseArgs(data.arguments) });
       }
       return;
     case 'tool/result': {
@@ -220,8 +250,21 @@ function foldEvent(state, event, session, brain) {
         if (pinnedSkillFrom(textOf(data.message.content), brain, name) === name) state.loaded.add(name);
         else state.shadowed.add(name);
       } else if (state.pendingDispatch.has(callId)) {
+        const args = state.pendingDispatch.get(callId);
         state.pendingDispatch.delete(callId);
-        if (ok) state.dispatches += 1;
+        if (!ok) return;
+        state.dispatches += 1;
+        const started = /started subagent (\S+)/.exec(textOf(data.message.content))?.[1];
+        const prompt = typeof args.prompt === 'string' ? args.prompt : '';
+        state.dispatchLog.push({
+          name: started ?? (typeof args.name === 'string' ? args.name : ''),
+          provider: args.provider, model: args.model, reasoning_effort: args.reasoning_effort,
+          ...parseRole(prompt), prompt, time: event.time ?? Date.now(), turn: data.turn,
+        });
+      } else if (state.pendingTracked.has(callId)) {
+        const { tool, args } = state.pendingTracked.get(callId);
+        state.pendingTracked.delete(callId);
+        if (ok) foldTracked(state, tool, args, data.message.content, event.time ?? Date.now());
       }
       return;
     }
@@ -238,6 +281,7 @@ function foldEvent(state, event, session, brain) {
         && source.senderSessionId === session.header.parentSession;
       if (source?.kind === 'user' && !state.sawAssignment) {
         state.sawAssignment = true;
+        state.role = parseRole(text);
         state.contracts.push(parseAssignment(text));
       } else if ((source?.kind === 'user' || fromParent) && CONTRACT_LINE.test(text)) {
         state.contracts.push(parseAssignment(text));
@@ -245,6 +289,32 @@ function foldEvent(state, event, session, brain) {
       return;
     }
     default:
+  }
+}
+
+/** Fold one successful Studio, asset or screenshot tool result. */
+function foldTracked(state, tool, args, content, time) {
+  if (SCREENSHOT_TOOLS.includes(tool)) {
+    if (hasImage(content)) state.screenshots.push({ tool, time });
+  } else if (tool === 'read_image') {
+    if (hasImage(content) && typeof args.file_path === 'string' && CAPTURED_FILE.test(args.file_path)) {
+      state.screenshots.push({ tool, time, path: args.file_path });
+    }
+  } else if (tool === 'solo_playtest' || tool === 'multiplayer_playtest') {
+    if (args.action === 'start') state.playing = true;
+    else if (args.action === 'stop' || args.action === 'end') state.playing = false;
+  } else if (tool === 'start_stop_play') {
+    const start = args.is_start ?? args.start ?? args.isStart;
+    if (start === true) state.playing = true;
+    else if (start === false) state.playing = false;
+  } else if (tool === 'search_assets' || tool === 'search_asset') {
+    state.assets.searches.push(String(args.query ?? '').trim().toLowerCase());
+  } else if (tool === 'get_asset_thumbnail') {
+    if (args.assetId !== undefined) state.assets.thumbnails.add(String(args.assetId));
+  } else if (tool === 'get_asset_details') {
+    if (args.assetId !== undefined) state.assets.details.add(String(args.assetId));
+  } else if (tool === 'insert_asset' || tool === 'generate_model') {
+    state.assets.changes.push(time);
   }
 }
 
@@ -314,6 +384,18 @@ export function auditSession(session, brain) {
     loaded: [...state.loaded].sort(),
     shadowed: [...state.shadowed].sort(),
     missing: contract.required.filter(name => !state.loaded.has(name)),
+    assets: assetEvidence(state),
+  };
+}
+
+/** Plain, serializable asset-sourcing evidence from one session. */
+export function assetEvidence(state) {
+  return {
+    searches: [...state.assets.searches],
+    thumbnails: [...state.assets.thumbnails].sort(),
+    details: [...state.assets.details].sort(),
+    changes: [...state.assets.changes],
+    screenshots: state.screenshots.length,
   };
 }
 
@@ -570,6 +652,7 @@ export function createEvidenceStore({ brain, ctx }) {
       const record = ensure(info.id, info.parentSessionId);
       record.state = 'finished';
       record.outcome = info.stopReason ?? 'completed';
+      record.endedAt = Date.now();
       record.endedOrder = endCounter += 1;
       record.final = false;
       record.generation += 1;
@@ -702,10 +785,22 @@ export function registerAuditTool(ctx, brain, evidence) {
                 loaded: list,
                 shadowed: list,
                 missing: list,
+                assets: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    searches: list,
+                    thumbnails: list,
+                    details: list,
+                    changes: { type: 'array', items: { type: 'number' } },
+                    screenshots: { type: 'integer' },
+                  },
+                  required: ['searches', 'thumbnails', 'details', 'changes', 'screenshots'],
+                },
               },
               required: ['id', 'name', 'parent', 'state', 'evidence', 'revision', 'revisionPinned', 'contractValid',
                 'contractProblems', 'readOnly',
-                'required', 'loaded', 'shadowed', 'missing'],
+                'required', 'loaded', 'shadowed', 'missing', 'assets'],
             },
           },
         },
@@ -723,7 +818,8 @@ export function registerAuditTool(ctx, brain, evidence) {
         if (records.length === 0) throw new Error(`worker catalog unavailable: ${error?.message ?? error}`);
       }
       const empty = { revision: '', revisionPinned: false, contractValid: false, contractProblems: [], readOnly: false,
-        required: [], loaded: [], shadowed: [], missing: [] };
+        required: [], loaded: [], shadowed: [], missing: [],
+        assets: { searches: [], thumbnails: [], details: [], changes: [], screenshots: 0 } };
       return {
         pinnedRevision: brain.commit,
         workers: records.map(record => ({

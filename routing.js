@@ -19,8 +19,12 @@
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, isSkillGated } from './skill-policy.js';
+import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, isSkillGated, sessionState, parseRole, baseToolName } from './skill-policy.js';
 import { statusContext } from './coordination.js';
+import {
+  projectRoot, gateEnabled, dispatchDenial, gateFileEditDenial, playtestInsertDenial, completionDenial,
+  evaluateGate, lastVisualChange, finalReply, replyCorrections,
+} from './visual-policy.js';
 
 export const inject = ['tools'];
 
@@ -232,6 +236,78 @@ export function blockingWaitDenial(execution) {
   };
 }
 
+/** Tools the visual gate decides; everything else skips its filesystem checks. */
+const VISUAL_GATED = new Set(['subagent', 'edit', 'write', 'apply_patch', 'update_goal', 'insert_asset', 'generate_model']);
+
+/**
+ * Build the visual-gate guard and the coordinator reply check.
+ * @param options.ctx - registrant context (workingDirectory, goals).
+ * @param options.brain - pinned brain, for the folded session state.
+ * @param options.evidence - worker evidence store.
+ * @param options.roleRoutes - `(role, tier) => routes[] | undefined`.
+ * @param options.mode - `auto` (marker file), `on` or `off`.
+ * @param options.runScript - project gate script runner (test seam).
+ */
+export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode = 'auto', runScript }) {
+  const guard = execution => {
+    const name = baseToolName(execution?.name);
+    if (!VISUAL_GATED.has(name)) return undefined;
+    const session = execution?.agent?.session;
+    if (session === undefined || session === null) return undefined;
+    const root = projectRoot(ctx, session);
+    if (!gateEnabled(root, mode)) return undefined;
+    const args = execution.arguments ?? {};
+    const state = sessionState(session, brain);
+    const worker = session.header?.origin === 'subagent';
+    if (name === 'subagent') {
+      const prompt = typeof args.prompt === 'string' ? args.prompt : '';
+      return dispatchDenial(prompt, args, parseRole(prompt), roleRoutes);
+    }
+    if (name === 'edit' || name === 'write' || name === 'apply_patch') {
+      return gateFileEditDenial(args.file_path ?? args.path, worker, state.role);
+    }
+    if (name === 'insert_asset' || name === 'generate_model') return playtestInsertDenial(name, state);
+    if (name === 'update_goal' && args.action === 'complete' && !worker) {
+      let objective;
+      try {
+        objective = ctx.get('goals')?.get?.(execution.agent)?.objective;
+      } catch { /* no goal service: nothing to judge */ }
+      const leadId = session.id ?? execution.agent.id;
+      const workers = evidence?.rows(leadId) ?? [];
+      return completionDenial({ root, objective, lead: state, workers, runScript });
+    }
+    return undefined;
+  };
+
+  const corrected = new Set();
+  const turnStopping = async ({ agent, turn }) => {
+    const session = agent?.session;
+    if (session === undefined || session?.header?.origin === 'subagent') return;
+    const key = `${session.id ?? agent.id}:${turn}`;
+    if (corrected.has(key)) return;
+    const state = sessionState(session, brain);
+    const dispatched = state.dispatchLog.filter(entry => entry.turn === turn);
+    const root = projectRoot(ctx, session);
+    let gate;
+    let lookedSinceChange = true;
+    if (gateEnabled(root, mode)) {
+      gate = evaluateGate(root, { runScript: () => undefined });
+      const change = lastVisualChange(root, gate.gates, state.assets.changes);
+      const lastShot = state.screenshots.reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
+      lookedSinceChange = lastShot > change.time;
+    }
+    if (dispatched.length === 0 && gate === undefined) return;
+    const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, lookedSinceChange });
+    if (corrections.length === 0 || typeof agent.steer !== 'function') return;
+    corrected.add(key);
+    agent.steer({
+      content: [{ type: 'text', text: `Roblox mode: before ending this turn, send a corrected reply.\n- ${corrections.join('\n- ')}` }],
+      source: { kind: 'roblox-visual-gate' },
+    });
+  };
+  return { guard, turnStopping };
+}
+
 export function apply(ctx, config) {
   const service = () => ctx.get('robloxRouting');
   const fallback = () => normalizeState(config);
@@ -313,6 +389,28 @@ export function apply(ctx, config) {
     console.warn(`[roblox-skill-guard] pinned brain unreadable: ${skillError}`);
   }
 
+  const roleRoutes = (role, tier) => {
+    const roles = service()?.roles?.();
+    if (!Array.isArray(roles) || roles.length === 0) {
+      const shipped = shippedRoutes().roles?.[role]?.[tier];
+      return Array.isArray(shipped) ? shipped : undefined;
+    }
+    const cell = roles.find(entry => entry.role === role)?.tiers?.find(entry => entry.id === `${role}/${tier}` && entry.enabled !== false);
+    return cell === undefined ? [] : [cell];
+  };
+  let visual;
+  if (brain !== undefined) {
+    const mode = ['on', 'off'].includes(config?.visualGate) ? config.visualGate : 'auto';
+    visual = createVisualGuard({ ctx, brain, evidence, roleRoutes, mode });
+  }
+  const offTurn = visual === undefined ? undefined : ctx.on?.('agent/turn-stopping', async payload => {
+    try {
+      await visual.turnStopping(payload);
+    } catch (error) {
+      console.warn(`[roblox-visual-gate] reply check failed: ${error?.message ?? error}`);
+    }
+  });
+
   const dispose = ctx.tools.guard(execution => {
     // A coordinator must not park the turn waiting on workers.
     const blocking = blockingWaitDenial(execution);
@@ -332,6 +430,18 @@ export function apply(ctx, config) {
 
     // Skill enforcement fails closed for the calls it governs (dispatch, edits, contract changes,
     // goal completion) and never touches questions or lookups.
+    if (visual !== undefined) {
+      try {
+        const verdict = visual.guard(execution);
+        if (verdict !== undefined) return verdict;
+      } catch (error) {
+        console.warn(`[roblox-visual-gate] check failed, call refused: ${error?.message ?? error}`);
+        return {
+          reason: `Roblox visual gate could not verify this call (${error?.message ?? error}). Retry; reading and answering remain available.`,
+          info: { name: 'roblox-visual-gate', code: 'VISUAL_POLICY_UNAVAILABLE' },
+        };
+      }
+    }
     if (!isSkillGated(execution)) return undefined;
     const unavailable = detail => ({
       reason: `Roblox skill policy could not verify this call (${detail}). Retry; if it persists, reinstall the bundle `
@@ -410,7 +520,11 @@ export function apply(ctx, config) {
           const agent = context?.agent ?? context?.scope;
           const session = agent?.session;
           if (evidence === undefined || session === undefined || session?.header?.origin === 'subagent') return '';
-          return statusContext(evidence.view(session.id ?? agent.id));
+          const routes = new Map();
+          try {
+            for (const entry of sessionState(session, brain).dispatchLog) if (entry.name) routes.set(entry.name, entry);
+          } catch { /* status without routes */ }
+          return statusContext(evidence.view(session.id ?? agent.id), routes);
         },
       });
     } catch (error) {
@@ -421,6 +535,7 @@ export function apply(ctx, config) {
   const off = ctx.on?.('roblox-routing/changed', () => { /* compile() reads fresh state */ });
   return () => {
     off?.();
+    offTurn?.();
     for (const disposeWorker of offWorkers) disposeWorker();
     dropStatus?.();
     removeAudit?.();

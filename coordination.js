@@ -14,9 +14,14 @@
  * changes only when a worker starts or finishes, so the system prompt stays byte-identical
  * between those events and prompt caching keeps working.
  * @param view - `{ running, finished }` worker records (`name`, `outcome`) for one lead.
+ * @param routes - worker name -> dispatch record with provider, model and reasoning_effort.
  * @returns context text, or '' when this lead has no workers.
  */
-export function statusContext(view) {
+export function statusContext(view, routes = new Map()) {
+  const route = worker => {
+    const entry = routes.get(worker.name);
+    return entry?.model ? ` (${entry.provider}/${entry.model} at ${entry.reasoning_effort})` : '';
+  };
   const running = view?.running ?? [];
   const finished = view?.finished ?? [];
   if (running.length === 0 && finished.length === 0) return '';
@@ -25,13 +30,13 @@ export function statusContext(view) {
     lines.push('- Waiting on: nothing; no worker is running.');
   } else {
     lines.push(`- Waiting on ${running.length} worker(s):`);
-    for (const worker of running) lines.push(`  - ${worker.name}: running`);
+    for (const worker of running) lines.push(`  - ${worker.name}${route(worker)}: running`);
   }
   if (finished.length > 0) {
     lines.push('- Recently finished:');
-    for (const worker of finished) lines.push(`  - ${worker.name}: ${worker.outcome ?? 'completed'}`);
+    for (const worker of finished) lines.push(`  - ${worker.name}${route(worker)}: ${worker.outcome ?? 'completed'}`);
   }
-  lines.push('Every reply to the user must end with a "Waiting on:" line naming each running worker and its task, '
+  lines.push('Every reply to the user must end with a "Waiting on:" line naming each running worker, its model and effort, and its task, '
     + 'or "Waiting on: nothing". Announce each finished worker by name with its outcome before using its results.');
   return lines.join('\n');
 }
