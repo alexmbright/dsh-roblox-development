@@ -9,7 +9,7 @@ const fsLike = { existsSync, copyFileSync, lstatSync, statSync, realpathSync };
 
 test('a missing standard is seeded from the bundled asset', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'seed-'));
-  const project = path.join(root, 'Castaway Crew');   // a space, as in the real workspace
+  const project = path.join(root, 'Game One');   // a directory name containing a space
   mkdirSync(project, { recursive: true });
   writeFileSync(path.join(project, 'selene.toml'), 'std = "roblox"\n');
   const source = path.join(root, 'vendor-roblox.yml');
@@ -24,7 +24,7 @@ test('a missing standard is seeded from the bundled asset', () => {
 
 test('an existing project standard is never overwritten', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'seed-'));
-  const project = path.join(root, 'Holiday Decorations');
+  const project = path.join(root, 'Game Two');
   mkdirSync(project, { recursive: true });
   writeFileSync(path.join(project, 'selene.toml'), 'std = "roblox"\n');
   writeFileSync(path.join(project, 'roblox.yml'), 'user owned\n');
@@ -58,7 +58,7 @@ test('nearest selene.toml wins and a symlinked config path is refused', () => {
 test('the shell delegate seeds the standard before executing a command', async () => {
   const { createShellDelegate } = await import('../workspace-runtime.js');
   const root = mkdtempSync(path.join(tmpdir(), 'delegate-'));
-  const project = path.join(root, 'Holiday Decorations');
+  const project = path.join(root, 'Game Two');
   mkdirSync(project, { recursive: true });
   writeFileSync(path.join(project, 'selene.toml'), 'std = "roblox"\n');
   const source = path.join(root, 'vendor-roblox.yml');
