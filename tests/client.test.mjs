@@ -82,9 +82,16 @@ test('the panel lays out one group per role with a tier row inside', () => {
   const elements = walk(section({}));
 
   const selects = elements.filter(element => element.type === 'select');
-  assert.equal(selects.length, 21, 'one model picker per tier');
-  const options = elements.filter(element => element.type === 'option');
+  const modelPickers = selects.filter(select => / model$/.test(select.props['aria-label']));
+  const effortPickers = selects.filter(select => / reasoning effort$/.test(select.props['aria-label']));
+  assert.equal(modelPickers.length, 21, 'one model picker per tier');
+  assert.equal(effortPickers.length, 21, 'one effort picker per tier');
+  const options = modelPickers.flatMap(select => walk(select.children)).filter(element => element.type === 'option');
   assert.equal(options.length, 42, 'two connected models per picker');
+  const efforts = walk(effortPickers[0].children).filter(element => element.type === 'option').map(option => option.props.value);
+  assert.deepEqual(efforts, ['low', 'high'], 'effort picker offers the efforts the chosen model declares');
+  assert.equal(effortPickers[0].props.value, 'high');
+  assert.equal(effortPickers[0].props.disabled, false);
   const checkboxes = elements.filter(element => element.type === 'input' && element.props?.type === 'checkbox');
   assert.equal(checkboxes.length, 21, 'one switch per tier');
   const purposes = elements.filter(element => element.type === 'textarea');
@@ -102,4 +109,18 @@ test('the manifest declares the client half correctly', () => {
   assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-settings'));
   assert.equal(manifest.exports['./client'], './client.js');
   assert.ok(manifest.files.includes('client.js'));
+});
+
+test('the effort picker keeps an unsupported saved effort visible and disables unset cells', () => {
+  const roles = [{ role: 'planner', tiers: [
+    { id: 'planner/fast', tier: 'fast', provider: 'deepseek-account', model: 'deepseek-flash', reasoning_effort: 'xhigh', enabled: true, purpose: 'p' },
+    { id: 'planner/standard', tier: 'standard', provider: '', model: '', reasoning_effort: '', enabled: false, purpose: 'p' },
+  ] }];
+  const models = [{ provider: 'deepseek-account', model: 'deepseek-flash', label: 'Flash', efforts: ['low', 'high'] }];
+  const seeds = ['ready', null, { roles, models }, [], {}, {}, false, null];
+  const section = register(loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined)));
+  const pickers = walk(section({})).filter(element => element.type === 'select' && / reasoning effort$/.test(element.props['aria-label']));
+  const labels = walk(pickers[0].children).filter(element => element.type === 'option').map(option => option.children[0]);
+  assert.deepEqual(labels, ['low', 'high', 'xhigh (not supported)']);
+  assert.equal(pickers[1].props.disabled, true, 'no model chosen, so no effort to pick');
 });

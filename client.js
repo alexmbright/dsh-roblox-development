@@ -1,8 +1,8 @@
 /**
  * Routing panel for the Roblox development bundle.
  *
- * One section per role, and under it one row per tier with its model picker, its switch and
- * its purpose. The model list is the set of providers and models this installation actually
+ * One section per role, and under it one row per tier with its switch, model picker, effort
+ * picker and purpose. The model list is the set of providers and models this installation actually
  * has connected, so the panel can only offer models that can really be dispatched.
  */
 window.__ModuleLoader__.load({
@@ -43,7 +43,7 @@ window.__ModuleLoader__.load({
     const box = { display: 'flex', flexDirection: 'column', gap: '10px', margin: '8px 0 4px', fontSize: '13px', color: 'inherit' };
     const roleHead = { fontWeight: 600, marginTop: '12px', fontSize: '13px', textTransform: 'capitalize' };
     const muted = { opacity: 0.65, fontSize: '12px' };
-    const row = { display: 'grid', gridTemplateColumns: '20px 90px minmax(160px, 280px)', gap: '8px', alignItems: 'center' };
+    const row = { display: 'grid', gridTemplateColumns: '20px 90px minmax(160px, 280px) minmax(80px, 120px)', gap: '8px', alignItems: 'center' };
     const tierBlock = { display: 'flex', flexDirection: 'column', gap: '4px', padding: '4px 0' };
     const control = {
       font: 'inherit', fontSize: '12px', padding: '3px 6px', borderRadius: '6px',
@@ -98,6 +98,15 @@ window.__ModuleLoader__.load({
         setOverrides(current => ({ ...current, [tier.id]: { provider, model, reasoning_effort: effort } }));
       };
 
+      /** Change only the effort, keeping the tier's current model. */
+      const chooseEffort = (tier, effort) => {
+        setSaved(null);
+        setOverrides(current => {
+          const base = current[tier.id] ?? { provider: tier.provider, model: tier.model };
+          return { ...current, [tier.id]: { provider: base.provider, model: base.model, reasoning_effort: effort } };
+        });
+      };
+
       const save = async () => {
         setSaving(true);
         setFailure(null);
@@ -149,6 +158,13 @@ window.__ModuleLoader__.load({
             const options = modelOptions.some(option => option.value === value)
               ? modelOptions
               : [...modelOptions, { value, label: `${value} (not connected)` }];
+            const unset = currentModel.provider === '' || currentModel.model === '';
+            const declared = (data.models ?? [])
+              .find(entry => entry.provider === currentModel.provider && entry.model === currentModel.model)?.efforts ?? [];
+            const effort = overrides[tier.id]?.reasoning_effort ?? tier.reasoning_effort ?? '';
+            // Offer what the model declares; keep a saved value it no longer declares visible so the
+            // save error makes sense instead of the picker silently showing something else.
+            const efforts = effort !== '' && !declared.includes(effort) ? [...declared, effort] : declared;
             return h('div', { key: tier.id, style: tierBlock },
               h('div', { style: row },
                 h('input', {
@@ -164,7 +180,18 @@ window.__ModuleLoader__.load({
                   disabled: disabledCells.includes(tier.id),
                   onChange: event => chooseModel(tier, event.target.value),
                   style: control,
-                }, options.map(option => h('option', { key: option.value, value: option.value }, option.label)))),
+                }, options.map(option => h('option', { key: option.value, value: option.value }, option.label))),
+                h('select', {
+                  'aria-label': `${tier.id} reasoning effort`,
+                  title: 'Reasoning effort this tier dispatches with',
+                  value: effort,
+                  disabled: disabledCells.includes(tier.id) || unset || efforts.length === 0,
+                  onChange: event => chooseEffort(tier, event.target.value),
+                  style: control,
+                }, efforts.length === 0
+                  ? [h('option', { key: 'none', value: effort }, effort === '' ? 'default' : effort)]
+                  : efforts.map(id => h('option', { key: id, value: id },
+                    declared.includes(id) ? id : `${id} (not supported)`)))),
               h('textarea', {
                 'aria-label': `${tier.id} purpose`,
                 placeholder: 'What this tier is for — the lead reads this',
@@ -194,10 +221,11 @@ window.__ModuleLoader__.load({
       return h('section', { 'data-roblox-routing-section': true },
         h('h3', { style: { margin: '0 0 4px', fontSize: '15px', fontWeight: 600 } }, 'Roblox routing'),
         h('p', { style: { ...muted, margin: '0 0 8px' } },
-          'Pick the model each role/tier dispatches, switch off the tiers this profile should not use, '
+          'Pick the model and reasoning effort each role/tier dispatches, switch off the tiers this profile should not use, '
           + 'and describe what each tier is for. These choices are the only source of the routing matrix: '
           + 'a fresh install seeds them from your default model, and nothing is inherited from routes.json. '
-          + 'A newly chosen model becomes dispatchable for new sessions after DSH restarts.'),
+          + 'A newly chosen model becomes dispatchable for new sessions after DSH restarts; '
+          + 'an effort change applies as soon as it is saved.'),
         h(RoutingPanel));
     }
 

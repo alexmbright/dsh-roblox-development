@@ -65,6 +65,7 @@ Routing lives in **Settings → Roblox routing**.
 
 - **First install seeds the matrix.** Every cell is set from your DSH default model, or the first connected model if none is set, and stored. Later releases never overwrite those choices.
 - **The panel is the only source of dispatch models.** `routes.json` supplies the role/tier structure, the purposes and the `dispatchGuard` rules — never a dispatchable model. Nothing is auto-substituted: a cell with no stored choice contributes no route rather than inheriting one.
+- **Each tier has its own reasoning effort picker**, listing the efforts the chosen model declares. An effort change applies as soon as it is saved; a saved effort the model no longer supports is shown as such and rejected on save.
 - **Changing a model to one outside the current allowlist takes effect for new sessions after DSH restarts**, because session model authorization is read at profile load.
 - **Off-matrix dispatch is refused** unless the caller records a `capacityFallback` reason, which is logged. Fork dispatch is always refused: a forked child inherits the lead model and cannot carry a tier.
 - **Reviewer independence is flagged.** The panel warns when reviewer cells share the implementer's provider, because final review must not come from the same provider.
@@ -120,7 +121,7 @@ Routes are advisory planning policy, not a runtime router, availability guarante
 
 ## Verification limits
 
-The suite (233 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
+The suite (234 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
 
 ## Development
 
@@ -138,6 +139,7 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.3.1** — per-tier reasoning effort picker in the routing panel.
 - **1.3.0** — roblox-brain skill use enforced (lead grounding, assignment contract, worker gate, `roblox_skill_audit`, verified goal completion); live worker status and coordinator announcements.
 - **1.2.1** — `@chrrxs/robloxstudio-mcp` 3.4.4.
 - **1.2.0** — routing matrix panel, `roblox_run_tool` / `roblox_routes`, native Selene standard seeding, five platform pins, npm publication under `@alexturbo`.
