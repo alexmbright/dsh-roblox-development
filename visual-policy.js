@@ -25,6 +25,10 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { checkVisualGate, gateScopes, latestChange, DEFAULT_CLIENT_SOURCE, GATE_FILE } from './tools/check-visual-gate.mjs';
 import { baseToolName } from './skill-policy.js';
+import { captureRefs } from './screenshots.js';
+
+/** An assignment carries something to look at: an image path or a shared capture id. */
+const hasVisualRef = text => IMAGE_PATH.test(text) || captureRefs(text).length > 0;
 
 const DENY_NAME = 'roblox-visual-gate';
 const deny = (reason, code) => ({ reason, info: { name: DENY_NAME, code, reason } });
@@ -108,7 +112,9 @@ export function dispatchDenial(prompt, args, parsedRole, roleRoutes = () => unde
         + `(expected ${routes.map(routeLabel).join(' or ')})`);
     }
     if (parsedRole.role === 'visual') {
-      if (!IMAGE_PATH.test(prompt)) problems.push('a visual review needs at least one screenshot or image path to judge (capture first, then pass the file paths)');
+      if (!hasVisualRef(prompt)) {
+        problems.push('a visual review needs at least one screenshot to judge: pass capture ids from roblox_screenshots (e.g. cap-1a2b3c4d5e) or image paths');
+      }
       if (!/Verdict:\s*`?PASS\s*\|\s*FAIL/i.test(prompt)) problems.push('require the verdict as "Verdict: PASS|FAIL" with a checklist');
       if (!new RegExp(GATE_FILE.replace('.', '\\.'), 'i').test(prompt)) problems.push(`name the docs/<scope>/${GATE_FILE} the reviewer records its verdict in`);
     }
@@ -189,14 +195,21 @@ export function completionDenial({ root, objective, lead, workers = [], runScrip
     problems.push(`your last screenshot predates ${change.what}; look again`);
   }
   const visualDispatches = lead.dispatchLog.filter(entry => entry.role === 'visual' && (entry.tier === 'standard' || entry.tier === 'expert')
-    && IMAGE_PATH.test(entry.prompt));
+    && hasVisualRef(entry.prompt));
   const lastWork = lead.dispatchLog.reduce((latest, entry, index) => (entry.role !== 'visual' && VISUAL_WORK.test(entry.prompt) ? index : latest), -1);
   const reviewedAfter = lead.dispatchLog.some((entry, index) => index > lastWork && visualDispatches.includes(entry));
   if (!reviewedAfter) problems.push('no visual/standard or visual/expert review with screenshot paths was dispatched after the last visual work');
   const reviewers = new Set(visualDispatches.map(entry => entry.name).filter(Boolean));
   for (const result of gate.gates) {
     const named = result.gate?.reviewer;
-    if (named !== undefined && !reviewers.has(named)) problems.push(`docs/${result.scope}/${GATE_FILE} names reviewer "${named}", which is not a visual worker you dispatched`);
+    if (named !== undefined && !reviewers.has(named)) {
+      problems.push(`docs/${result.scope}/${GATE_FILE} names reviewer "${named}", which is not a visual worker you dispatched`);
+    } else if (named !== undefined) {
+      const row = workers.find(worker => worker.name === named);
+      if (row?.audit?.assets !== undefined && row.audit.assets.screenshots === 0) {
+        problems.push(`reviewer "${named}" never viewed a screenshot (roblox_screenshots view, a capture tool, or read_image on a capture)`);
+      }
+    }
   }
   problems.push(...gate.problems);
   problems.push(...assetEvidenceProblems(gate.gates, evidence));
@@ -231,8 +244,13 @@ export function finalReply(session, turn) {
  * @param input.gate - `{ ok, problems }` when the visual gate applies, else undefined.
  * @param input.lookedSinceChange - whether the coordinator viewed a screenshot after the last change.
  */
-export function replyCorrections({ reply, dispatched = [], gate, lookedSinceChange = true }) {
+export function replyCorrections({ reply, dispatched = [], gate, lookedSinceChange = true, newCaptures = [] }) {
   const out = [];
+  if (newCaptures.length > 0 && !/!\[[^\]]*\]\(/.test(reply) && !/no (?:new )?(?:screenshots?|previews?|captures?) worth showing/i.test(reply)) {
+    out.push(`Workers captured ${newCaptures.length} new screenshot(s) (${newCaptures.slice(0, 6).join(', ')}). Show the operator the `
+      + 'ones that matter: pick them with roblox_screenshots (list/view) and embed each with ![caption](<path>) and a one-line note '
+      + 'of what changed and who captured it, or say "no new screenshots worth showing".');
+  }
   const lower = reply.toLowerCase();
   const unannounced = dispatched.filter(entry => typeof entry.model === 'string' && entry.model !== ''
     && !(lower.includes(entry.model.toLowerCase()) && lower.includes(String(entry.reasoning_effort ?? '').toLowerCase())));

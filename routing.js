@@ -25,6 +25,7 @@ import {
   projectRoot, gateEnabled, dispatchDenial, gateFileEditDenial, playtestInsertDenial, completionDenial,
   evaluateGate, lastVisualChange, finalReply, replyCorrections,
 } from './visual-policy.js';
+import { registerScreenshotTool, collectTree } from './screenshots.js';
 
 export const inject = ['tools'];
 
@@ -248,7 +249,8 @@ const VISUAL_GATED = new Set(['subagent', 'edit', 'write', 'apply_patch', 'updat
  * @param options.mode - `auto` (marker file), `on` or `off`.
  * @param options.runScript - project gate script runner (test seam).
  */
-export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode = 'auto', runScript }) {
+export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode = 'auto', runScript,
+  previews = 'on', collect = collectTree }) {
   const guard = execution => {
     const name = baseToolName(execution?.name);
     if (!VISUAL_GATED.has(name)) return undefined;
@@ -280,11 +282,27 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
   };
 
   const corrected = new Set();
-  const turnStopping = async ({ agent, turn }) => {
+  // Per lead: capture time already offered to the operator. Starts at the first turn seen, so a
+  // resumed session is not asked to replay its whole history.
+  const shownUntil = new Map();
+  const newCapturesFor = async (agent, leadId, signal) => {
+    if (previews === 'off') return [];
+    const since = shownUntil.get(leadId);
+    let captures = [];
+    try {
+      captures = (await collect(ctx, agent, signal)).captures;
+    } catch { /* previews are best-effort */ }
+    const newest = captures.reduce((latest, capture) => Math.max(latest, capture.time), since ?? 0);
+    shownUntil.set(leadId, newest);
+    if (since === undefined) return [];
+    return captures.filter(capture => capture.time > since).map(capture => capture.id);
+  };
+  const turnStopping = async ({ agent, turn, signal }) => {
     const session = agent?.session;
     if (session === undefined || session?.header?.origin === 'subagent') return;
     const key = `${session.id ?? agent.id}:${turn}`;
     if (corrected.has(key)) return;
+    const newCaptures = await newCapturesFor(agent, session.id ?? agent.id, signal);
     const state = sessionState(session, brain);
     const dispatched = state.dispatchLog.filter(entry => entry.turn === turn);
     const root = projectRoot(ctx, session);
@@ -296,8 +314,8 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
       const lastShot = state.screenshots.reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
       lookedSinceChange = lastShot > change.time;
     }
-    if (dispatched.length === 0 && gate === undefined) return;
-    const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, lookedSinceChange });
+    if (dispatched.length === 0 && gate === undefined && newCaptures.length === 0) return;
+    const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, lookedSinceChange, newCaptures });
     if (corrections.length === 0 || typeof agent.steer !== 'function') return;
     corrected.add(key);
     agent.steer({
@@ -401,7 +419,8 @@ export function apply(ctx, config) {
   let visual;
   if (brain !== undefined) {
     const mode = ['on', 'off'].includes(config?.visualGate) ? config.visualGate : 'auto';
-    visual = createVisualGuard({ ctx, brain, evidence, roleRoutes, mode });
+    const previews = config?.screenshotPreviews === 'off' ? 'off' : 'on';
+    visual = createVisualGuard({ ctx, brain, evidence, roleRoutes, mode, previews });
   }
   const offTurn = visual === undefined ? undefined : ctx.on?.('agent/turn-stopping', async payload => {
     try {
@@ -496,6 +515,13 @@ export function apply(ctx, config) {
       console.warn(`[roblox-skill-guard] roblox_skill_audit unavailable: ${error?.message ?? error}`);
     }
   }
+  // Shared screenshot tool: same fire-and-forget posture.
+  let removeScreenshots;
+  try {
+    removeScreenshots = registerScreenshotTool(ctx, session => projectRoot(ctx, session));
+  } catch (error) {
+    console.warn(`[roblox-screenshots] roblox_screenshots unavailable: ${error?.message ?? error}`);
+  }
 
   // Worker lifecycle feeds both the acceptance evidence and the coordinator status context.
   // Evidence is captured at settlement because the worker's live handle is disposed around then.
@@ -539,6 +565,7 @@ export function apply(ctx, config) {
     for (const disposeWorker of offWorkers) disposeWorker();
     dropStatus?.();
     removeAudit?.();
+    removeScreenshots?.();
     for (const disposeLifecycle of offLifecycle) disposeLifecycle();
     removeTool?.();
     dropSection?.();

@@ -207,7 +207,7 @@ test('a visual reviewer dispatch without a screenshot or image path is rejected'
   const prompt = 'Role: visual/standard\nReview the main menu. Return Verdict: PASS|FAIL with a checklist in docs/launch/VISUAL_GATE.md.';
   const denial = guard(call(lead([]), 'subagent', { prompt, ...VISUAL_ROUTE }));
   assert.equal(denial.info.code, 'VISUAL_ASSIGNMENT_INCOMPLETE');
-  assert.match(denial.reason, /needs at least one screenshot or image path/);
+  assert.match(denial.reason, /needs at least one screenshot to judge: pass capture ids/);
   assert.equal(guard(call(lead([]), 'subagent', { prompt: reviewPrompt, ...VISUAL_ROUTE })), undefined);
 });
 

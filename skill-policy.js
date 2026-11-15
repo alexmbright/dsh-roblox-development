@@ -187,7 +187,8 @@ export function pinnedSkillFrom(text, brain, expectedName) {
 export const baseToolName = name => (typeof name === 'string' && name.startsWith('mcp__') ? name.split('__').pop() : name);
 export const SCREENSHOT_TOOLS = ['screen_capture', 'capture_screenshot', 'capture_device_matrix'];
 const TRACKED_TOOLS = new Set([...SCREENSHOT_TOOLS, 'read_image', 'solo_playtest', 'multiplayer_playtest', 'start_stop_play',
-  'search_assets', 'search_asset', 'get_asset_thumbnail', 'get_asset_details', 'insert_asset', 'generate_model']);
+  'search_assets', 'search_asset', 'get_asset_thumbnail', 'get_asset_details', 'insert_asset', 'generate_model',
+  'roblox_screenshots']);
 /** A read_image path counts as a screenshot only when it names a capture. */
 export const CAPTURED_FILE = /(?:^|[\\/])(?:screenshots?|captures?)[\\/]|screen[-_ ]?shot|screen[-_ ]?capture|capture|device[-_ ]?matrix/i;
 const ROLE_LINE = /^[ \t>*_-]*Role:[*_]*[ \t]*`?([a-z]+)\/(fast|standard|expert)\b/im;
@@ -296,6 +297,18 @@ function foldEvent(state, event, session, brain) {
 function foldTracked(state, tool, args, content, time) {
   if (SCREENSHOT_TOOLS.includes(tool)) {
     if (hasImage(content)) state.screenshots.push({ tool, time });
+  } else if (tool === 'roblox_screenshots') {
+    // Viewing a shared capture counts as looking, as of when it was captured, not when viewed:
+    // an old capture viewed after a change is still an old picture.
+    if (args.action !== 'view' || !hasImage(content)) return;
+    let viewed = [];
+    try {
+      viewed = JSON.parse(textOf(content)).captures ?? [];
+    } catch { /* unreadable summary: nothing counted */ }
+    for (const capture of viewed) {
+      const captured = Date.parse(capture?.capturedAt ?? '');
+      if (Number.isFinite(captured)) state.screenshots.push({ tool, time: captured, id: capture.id });
+    }
   } else if (tool === 'read_image') {
     if (hasImage(content) && typeof args.file_path === 'string' && CAPTURED_FILE.test(args.file_path)) {
       state.screenshots.push({ tool, time, path: args.file_path });

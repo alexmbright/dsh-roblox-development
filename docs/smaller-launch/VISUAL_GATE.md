@@ -8,9 +8,9 @@ Reviewed: YYYY-MM-DD
 Client source: src/client, src/StarterGui, src/StarterPlayer, src/ReplicatedFirst, assets
 
 Screenshots:
-- screenshots/<scope>-main-menu-desktop.png
-- screenshots/<scope>-hud-phone.png
-- screenshots/<scope>-scene-overview.png
+- cap-1a2b3c4d5e main menu, desktop
+- cap-2b3c4d5e6f HUD, phone
+- cap-3c4d5e6f7a scene overview
 
 ## Checklist
 
@@ -34,4 +34,4 @@ Final: 1234567890
 Queries: "low poly pine tree"; "stylized tree"; "forest tree pack"; "cartoon tree"; "tree model"; "nature props"
 Candidates:
 - 1234567890 | creator: <owner> | price: free | thumbnail: yes | details: yes | in-scene: yes | status: kept | authorized: YYYY-MM-DD
-- 2345678901 | creator: <owner> | price: free | thumbnail: yes | details: yes | in-scene: yes | status: rejected | reason: realistic style clashes with the flat palette in scene-overview.png
+- 2345678901 | creator: <owner> | price: free | thumbnail: yes | details: yes | in-scene: yes | status: rejected | reason: realistic style clashes with the flat palette in cap-3c4d5e6f7a

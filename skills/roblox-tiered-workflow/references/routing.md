@@ -15,9 +15,9 @@ Announce every dispatch with the worker name, role/tier cell, exact model and re
 A visual/standard (or visual/expert for art direction) assignment must include:
 
 - `Role: visual/standard` or `Role: visual/expert`.
-- At least one screenshot or image path to judge, captured after the latest change; ask for phone, tablet and desktop via capture_device_matrix.
+- At least one screenshot to judge, captured after the latest change: capture ids from `roblox_screenshots` (e.g. `cap-1a2b3c4d5e`), which the reviewer views with `roblox_screenshots` action `view`, or image paths. Ask for phone, tablet and desktop via capture_device_matrix. QA and other workers receive capture ids the same way.
 - `Verdict: PASS|FAIL` with a checklist: readability per device, hierarchy, palette/type consistency, no placeholder primitives in player view, lighting matches direction, nothing clipped or overlapping.
-- The `docs/<scope>/VISUAL_GATE.md` the reviewer writes: verdict, `Reviewer: <its worker name> (visual/standard)`, at least 3 screenshot names, the checklist, findings and the asset-sourcing record. Only the visual worker writes this file.
+- The `docs/<scope>/VISUAL_GATE.md` the reviewer writes: verdict, `Reviewer: <its worker name> (visual/standard)`, at least 3 screenshot capture ids or names, the checklist, findings and the asset-sourcing record. Only the visual worker writes this file.
 - For asset work, the sourcing rule: 6+ varied search_assets queries per piece, thumbnail and details per candidate, reject only after seeing it in the scene (scripts, triangles and pivots are fixable), never insert during a playtest.
 
 The coordinator then views the screenshots itself and runs `node tools/check-visual-gate.mjs`; a non-zero exit means the report opens with "visual gate FAILED".
