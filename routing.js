@@ -19,6 +19,8 @@
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, isSkillGated } from './skill-policy.js';
+import { statusContext } from './coordination.js';
 
 export const inject = ['tools'];
 
@@ -294,6 +296,23 @@ export function apply(ctx, config) {
     }
     return state;
   });
+  let skillGuard;
+  let skillError;
+  let brain;
+  let evidence;
+  try {
+    brain = loadBrain();
+    evidence = createEvidenceStore({ brain, ctx });
+    skillGuard = createSkillGuard({
+      brain,
+      evidence,
+      parentNameOf: agent => ctx.get('subagents')?.namesOf?.(agent)?.parent,
+    });
+  } catch (error) {
+    skillError = error?.message ?? String(error);
+    console.warn(`[roblox-skill-guard] pinned brain unreadable: ${skillError}`);
+  }
+
   const dispose = ctx.tools.guard(execution => {
     // A coordinator must not park the turn waiting on workers.
     const blocking = blockingWaitDenial(execution);
@@ -303,11 +322,28 @@ export function apply(ctx, config) {
     // a thrown tool error, so it degrades to "no routing opinion" with a warning.
     // Belt and braces: whatever session this dispatch belongs to is registered too.
     allowToolchain(ctx, execution?.agent?.session, allowed);
+    let routed;
     try {
-      return guard(execution);
+      routed = guard(execution);
     } catch (error) {
       console.warn(`[roblox-routing-guard] policy unavailable, dispatch not routed: ${error?.message ?? error}`);
-      return undefined;
+    }
+    if (routed !== undefined) return routed;
+
+    // Skill enforcement fails closed for the calls it governs (dispatch, edits, contract changes,
+    // goal completion) and never touches questions or lookups.
+    if (!isSkillGated(execution)) return undefined;
+    const unavailable = detail => ({
+      reason: `Roblox skill policy could not verify this call (${detail}). Retry; if it persists, reinstall the bundle `
+        + 'and report it. Reading, searching and answering remain available.',
+      info: { name: 'roblox-skill-guard', code: 'SKILLS_POLICY_UNAVAILABLE' },
+    });
+    if (skillGuard === undefined) return unavailable(skillError);
+    try {
+      return skillGuard(execution);
+    } catch (error) {
+      console.warn(`[roblox-skill-guard] check failed, call refused: ${error?.message ?? error}`);
+      return unavailable(error?.message ?? String(error));
     }
   });
 
@@ -341,9 +377,53 @@ export function apply(ctx, config) {
     console.warn(`[roblox-routing-guard] roblox_routes unavailable: ${error?.message ?? error}`);
   }
 
+  // Skill audit tool: same fire-and-forget posture as roblox_routes.
+  let removeAudit;
+  if (brain !== undefined) {
+    try {
+      removeAudit = registerAuditTool(ctx, brain, evidence);
+    } catch (error) {
+      console.warn(`[roblox-skill-guard] roblox_skill_audit unavailable: ${error?.message ?? error}`);
+    }
+  }
+
+  // Worker lifecycle feeds both the acceptance evidence and the coordinator status context.
+  // Evidence is captured at settlement because the worker's live handle is disposed around then.
+  const offWorkers = evidence === undefined ? [] : [
+    ctx.on?.('subagent/start', info => evidence.start(info)),
+    ctx.on?.('subagent/end', info => { void evidence.end(info); }),
+  ].filter(handler => typeof handler === 'function');
+  let dropStatus;
+  if (prompt !== undefined && typeof prompt.context === 'function') {
+    let order = 950;
+    try {
+      if (typeof prompt.getContextOrder === 'function') order = prompt.getContextOrder('SUBAGENT_DELEGATION') + 1;
+    } catch { /* keep the fallback order */ }
+    try {
+      dropStatus = prompt.context({
+        name: 'roblox-worker-status',
+        order,
+        interpolate: false,
+        text: context => {
+          // Contexts receive the assembling agent (dsh-tool-subagent relies on the same field); the
+          // scope key is that agent too, so it is the fallback.
+          const agent = context?.agent ?? context?.scope;
+          const session = agent?.session;
+          if (evidence === undefined || session === undefined || session?.header?.origin === 'subagent') return '';
+          return statusContext(evidence.view(session.id ?? agent.id));
+        },
+      });
+    } catch (error) {
+      console.warn(`[roblox-routing-guard] worker status context unavailable: ${error?.message ?? error}`);
+    }
+  }
+
   const off = ctx.on?.('roblox-routing/changed', () => { /* compile() reads fresh state */ });
   return () => {
     off?.();
+    for (const disposeWorker of offWorkers) disposeWorker();
+    dropStatus?.();
+    removeAudit?.();
     for (const disposeLifecycle of offLifecycle) disposeLifecycle();
     removeTool?.();
     dropSection?.();

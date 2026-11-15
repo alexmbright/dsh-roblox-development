@@ -70,3 +70,37 @@ test('a coordinator may not block on a worker', async () => {
   assert.equal(blockingWaitDenial(worker), undefined, 'a worker may wait on its children');
   assert.equal(blockingWaitDenial(other), undefined, 'unrelated tools are untouched');
 });
+
+test('the mounted guard enforces skills after routing and registers the audit tool', () => {
+  const { ctx, guards, registered } = harness();
+  routing.apply(ctx, {});
+  assert.ok(registered.some(definition => definition.name === 'roblox_skill_audit'));
+  const session = { id: 'lead', header: {}, events: [] };
+  const route = { provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' };
+  const denial = guards[0]({ name: 'subagent', arguments: { ...route, prompt: 'do it' }, agent: { id: 'lead', session } });
+  assert.equal(denial?.info?.code, 'SKILLS_LEAD_NOT_GROUNDED');
+  const unrouted = guards[0]({ name: 'subagent', arguments: { prompt: 'do it' }, agent: { id: 'lead', session } });
+  assert.equal(unrouted?.info?.code, 'ROUTING_ROUTE_REQUIRED', 'routing denial still comes first');
+  assert.equal(guards[0]({ name: 'read', arguments: {}, agent: { id: 'lead', session } }), undefined);
+});
+
+test('worker status context is lead-only and follows subagent lifecycle events', () => {
+  const { ctx } = harness();
+  const listeners = {};
+  const contexts = [];
+  ctx.on = (name, fn) => { listeners[name] = fn; return () => {}; };
+  ctx.get = name => (name === 'systemPrompt'
+    ? { context: c => { contexts.push(c); return () => {}; }, getContextOrder: () => 100 }
+    : undefined);
+  routing.apply(ctx, {});
+  const status = contexts.find(c => c.name === 'roblox-worker-status');
+  assert.ok(status, 'context registered');
+  const leadContext = { agent: { id: 'lead', session: { id: 'lead', header: {} } } };
+  assert.equal(status.text(leadContext), '');
+  listeners['subagent/start']({ id: 'w1', parentSessionId: 'lead' });
+  assert.match(status.text(leadContext), /Waiting on 1 worker/);
+  listeners['subagent/end']({ id: 'w1', parentSessionId: 'lead', stopReason: 'completed' });
+  assert.match(status.text(leadContext), /Waiting on: nothing[^]*w1: completed/);
+  const workerContext = { agent: { id: 'w1', session: { id: 'w1', header: { origin: 'subagent' } } } };
+  assert.equal(status.text(workerContext), '');
+});

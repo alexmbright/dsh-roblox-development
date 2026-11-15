@@ -1,6 +1,6 @@
 {
   "name": "@alexturbo/dsh-roblox-development",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "private": false,
   "type": "module",
   "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",
@@ -26,6 +26,8 @@
   "files": [
     "index.js",
     "routing.js",
+    "skill-policy.js",
+    "coordination.js",
     "toolrun.js",
     "client.js",
     "routing-controls.js",

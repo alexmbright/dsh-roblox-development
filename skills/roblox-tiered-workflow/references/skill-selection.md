@@ -28,4 +28,25 @@ Use live skill descriptions to extend this starting map when domains overlap. De
 
 Captain includes `Brain revision: <SHA>` and `Required skills: <names>` with each implementation/review task. Worker loads the authoritative instructions before work and reports loaded names, applied checks, evidence and unresolved findings. Reviewer evaluates the actual changed behavior against that guidance; a reported skill list alone is not correctness evidence.
 
+### Enforcement
+
+The Roblox preset enforces this contract with deny-only tool guards; each denial names the fix.
+
+- **Lead grounding.** `subagent`, `edit`, `write` and `apply_patch` are refused until the lead has loaded `roblox-tiered-workflow` and at least one roblox-brain domain skill in this session. Reading, searching, answering and ordinary messages are never gated.
+- **Assignment.** Every `subagent` prompt, including one a worker sends to its own helper, needs these lines (Markdown bullets and emphasis are fine):
+
+  ```
+  Brain revision: <pinned SHA or a 7+ character prefix>
+  Required skills: <exact names, comma/and/bracket list or "- name" bullets>
+  Report: loaded skills, applied checks, evidence and unresolved findings.
+  ```
+
+  The sender must have loaded every skill it requires. `Required skills: none — <reason>` is allowed for read-only work and is logged; that worker cannot edit files.
+- **Contract changes.** A `send_message` that contains `Required skills:` is a contract change and is held to the same rules. The worker adds those skills to its requirements, and a read-only worker can be promoted this way. Only the worker's own parent can change its contract; a message up to one's parent is a report and is not checked.
+- **Worker.** A worker cannot edit files until every skill its active contract requires is loaded in its own session.
+- **Pinned copies only.** A skill counts only when the `skill` result shows it was served from this bundle's pinned directory. A project or user skill with the same name shadows the pin and does not count; the denial names it.
+- **Acceptance.** `roblox_skill_audit` reads every descendant worker's log, including finished ones, and lists required, loaded, shadowed and missing skills. `update_goal` with `complete` is refused while any worker has no valid pinned contract, is missing a required skill, or has evidence that cannot be read (including an unreadable catalog entry or a final log that failed to load). After a restart, call `roblox_skill_audit` first.
+
+Evidence comes only from session logs, never from what a worker says it loaded.
+
 If skill discovery fails, repair access or supply the full authoritative text and needed references from the recorded revision, noting that delivery. For older unguided code, load the relevant skills and perform a new review rather than claiming retroactive compliance.

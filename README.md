@@ -75,6 +75,7 @@ Routing lives in **Settings → Roblox routing**.
 |---|---|
 | `roblox_routes` | Current role/tier routes with provider, model, effort, purpose and source (`auto`/`override`). Call before delegating. |
 | `roblox_run_tool` | Run a pinned tool (`tool`, `args`, optional `cwd`) and return exit code, stdout, stderr. Working directory and path arguments are fenced to the session workspace. |
+| `roblox_skill_audit` | Per worker: pinned revision given, required roblox-brain skills, skills its session log shows loaded, and any missing. Call before accepting worker output. |
 | `roblox_setup_status` | Provisioned toolchain status and executable paths, without installing anything. |
 
 ## Studio setup
@@ -111,11 +112,15 @@ Selene's Roblox standard is seeded from the bundle beside the nearest `selene.to
 
 Describe the game outcome; the captain coordinates and delegates. Workers implement, derive checks, repair failures and report evidence, and coupled work can stay with one worker. The lead loads [the workflow skill](skills/roblox-tiered-workflow/SKILL.md) before planning, implementation or review; workers load the domain skills for their scope.
 
+Skill use is enforced, not advisory. Worker dispatch and file edits are refused until the lead has loaded the workflow skill and the relevant roblox-brain domain skills. Every worker prompt must state `Brain revision: <pinned SHA>`, `Required skills: <names>` and require a report of loaded skills and applied checks. Workers, including nested helpers, cannot edit until they have loaded their required skills, and only skills served from the pinned bundle count. A goal cannot be completed while any worker is missing one. Questions and lookups are never gated. See [skill-selection.md](skills/roblox-tiered-workflow/references/skill-selection.md#enforcement).
+
+The coordinator announces each dispatch and each finished worker, and ends every reply with a `Waiting on:` line. A live worker-status context, which changes only when a worker starts or finishes, keeps that line accurate.
+
 Routes are advisory planning policy, not a runtime router, availability guarantee or fixed roster: discover what is available before dispatch and adapt explicitly when a route is unavailable. Quota or outage is capacity evidence, never proof of inadequate reasoning.
 
 ## Verification limits
 
-The suite (193 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
+The suite (233 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
 
 ## Development
 
@@ -133,6 +138,7 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.3.0** — roblox-brain skill use enforced (lead grounding, assignment contract, worker gate, `roblox_skill_audit`, verified goal completion); live worker status and coordinator announcements.
 - **1.2.1** — `@chrrxs/robloxstudio-mcp` 3.4.4.
 - **1.2.0** — routing matrix panel, `roblox_run_tool` / `roblox_routes`, native Selene standard seeding, five platform pins, npm publication under `@alexturbo`.
 - **1.1.1** — macOS toolchain provisioning fix (OS layout symlinks such as `/var`).
