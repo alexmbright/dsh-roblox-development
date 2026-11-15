@@ -208,6 +208,28 @@ function allowToolchain(ctx, session, allowed) {
 }
 
 /** Mount the guard in the calling scope; the disposer unregisters it. */
+/**
+ * Refuse a blocking wait from a coordinator.
+ *
+ * `wait_agent` parks the turn until a worker reports, which stops the operator from adding or
+ * redirecting work while workers run. Completion already resumes the coordinator, so the wait
+ * costs interactivity for nothing. Workers keep the tool: a worker waiting on its own children
+ * is a legitimate use.
+ * @param execution - the pending tool call.
+ * @returns a denial for a non-subagent caller, else undefined.
+ */
+export function blockingWaitDenial(execution) {
+  if (execution?.name !== 'wait_agent') return undefined;
+  const origin = execution?.agent?.session?.header?.origin;
+  if (origin === 'subagent') return undefined;
+  return {
+    reason: 'Do not block on workers. Say what is running and end your turn: completion wakes you, '
+      + 'and a parked turn stops the operator from adding, reprioritising or redirecting work. '
+      + 'Workers may wait on their own children.',
+    info: { name: 'roblox-routing-guard', code: 'ROUTING_NO_BLOCKING_WAIT' },
+  };
+}
+
 export function apply(ctx, config) {
   const service = () => ctx.get('robloxRouting');
   const fallback = () => normalizeState(config);
@@ -273,6 +295,10 @@ export function apply(ctx, config) {
     return state;
   });
   const dispose = ctx.tools.guard(execution => {
+    // A coordinator must not park the turn waiting on workers.
+    const blocking = blockingWaitDenial(execution);
+    if (blocking !== undefined) return blocking;
+
     // The guard runs on every tool call in this scope; a policy failure must never surface as
     // a thrown tool error, so it degrades to "no routing opinion" with a warning.
     // Belt and braces: whatever session this dispatch belongs to is registered too.

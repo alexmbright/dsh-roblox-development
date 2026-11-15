@@ -55,3 +55,18 @@ test('a rejected tool registration cannot fail the plugin mount', () => {
   ctx.tools.register = () => { throw new TypeError('registry refused'); };
   assert.doesNotThrow(() => routing.apply(ctx, {}));
 });
+
+test('a coordinator may not block on a worker', async () => {
+  const { blockingWaitDenial } = await import('../routing.js');
+  const coordinator = { name: 'wait_agent', agent: { session: { header: { origin: 'desktop' } } } };
+  const worker = { name: 'wait_agent', agent: { session: { header: { origin: 'subagent' } } } };
+  const other = { name: 'subagent', agent: { session: { header: { origin: 'desktop' } } } };
+
+  const denial = blockingWaitDenial(coordinator);
+  assert.ok(denial, 'coordinator wait is refused');
+  assert.equal(denial.info.code, 'ROUTING_NO_BLOCKING_WAIT');
+  assert.match(denial.reason, /end your turn/);
+
+  assert.equal(blockingWaitDenial(worker), undefined, 'a worker may wait on its children');
+  assert.equal(blockingWaitDenial(other), undefined, 'unrelated tools are untouched');
+});
