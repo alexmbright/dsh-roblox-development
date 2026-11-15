@@ -1,24 +1,53 @@
 # Roblox development for DSH
 
-DSH preset bundle `@alexmbright/dsh-roblox-development` with workspace-local routine tooling, pinned offline Roblox skills, explicit native-worker routes, and scoped MCP result compatibility. Captain coordinates workers and one Studio operator. No Studio locks, AgentTeams, or Rojo.
+DSH preset bundle `@alexmbright/dsh-roblox-development` with workspace-local routine tooling, pinned offline Roblox skills, an editable role/tier routing matrix, pinned-binary tool executors, and scoped MCP result compatibility. Captain coordinates workers and one Studio operator. No Studio locks, AgentTeams, or Rojo.
 
 ## Compatibility
 
 Version 1.0.4 explicitly advertises compatibility with **DSH 0.2.2-rc.2 and 0.2.2-rc.3**. The existing engine range already permits rc3; it remains unchanged so rc2 users can update too. After upgrading Windows Desktop to rc3, the installed 1.0.3 bundle remained enabled, and a synthetic check against the actual packaged rc3 MCP adapter confirmed visible text and structured-only output with canonical data preserved. Version 1.0.4 changes metadata/documentation only, not the compatibility adapter. Live Studio connectivity, macOS runtime behavior, and whole-process-tree cleanup remain separate unverified checks.
 
-Version **1.1.1** fixes toolchain provisioning on macOS. The cache-path safety walk treated the operating system's own directory links as unsafe ancestors, so provisioning was refused whenever the profile-owned root resolved beneath one: `/var` and `/tmp` are links into `/private` on macOS, so any temporary or `/var`-based cache path failed with `UNSAFE_CACHE_PATH` before the walk reached a single owned segment. Layout links are now followed and rebased onto their canonical target, while every segment at or below the owning root stays strictly symlink-free, so a link inside the cache path is still refused. The completion-receipt path check compares canonically for the same reason, and the provisioning fixture removes its symlink with `unlink` on POSIX and `rmdir` on Windows. The full suite passes on Node 22.20.0 and on DSH's packaged Node 24.21.0. Packaging, the engine range, platform gating and the four supported targets are unchanged; Windows and Linux behavior is untouched by construction but has not been re-executed on those hosts.
+Version **1.1.1** fixes toolchain provisioning on macOS. The cache-path safety walk treated the operating system's own directory links as unsafe ancestors, so provisioning was refused whenever the profile-owned root resolved beneath one: `/var` and `/tmp` are links into `/private` on macOS, so any temporary or `/var`-based cache path failed with `UNSAFE_CACHE_PATH` before the walk reached a single owned segment. Layout links are now followed and rebased onto their canonical target, while every segment at or below the owning root stays strictly symlink-free, so a link inside the cache path is still refused. The completion-receipt path check compares canonically for the same reason, and the provisioning fixture removes its symlink with `unlink` on POSIX and `rmdir` on Windows. The full suite passes on Node 22.20.0 and on DSH's packaged Node 24.21.0. Packaging and the engine range are unchanged by this fix.
+
+Version **1.2.0** adds the routing matrix and pinned-binary executors.
+
+- **Role/tier routing is editable.** Settings → Roblox routing lists every role with its tiers nested underneath; each tier picks its own model from the models this installation actually has connected, can be switched off, and carries a purpose the lead reads. A blank cell keeps the shipped `routes.json` route.
+- **`roblox_run_tool` runs the pinned tools directly.** `lune`, `stylua`, `selene`, `luau`, `luau-analyze`, `luau-compile` and `luau-lsp` execute through the plugin in the host process, so they need no shell approval, cannot resolve a different version from `PATH`, and return the exit code with output. Shell commands still work; the shared `roblox-toolchain` directory is registered as a writable root for the session.
+- **`roblox_routes` lets the lead look up routes** on demand, and the same list is injected into its prompt each step.
+- **Selene's standard is seeded natively.** The bundled `vendor/selene/roblox.yml` is copied beside the nearest `selene.toml` before a command runs, so first-run linting no longer needs network access or a writable user cache.
+
+## Platforms
+
+Five native toolchain targets, with coverage limited only where upstream publishes no asset:
+
+| Target | Tools provisioned |
+|---|---|
+| `win32-x64` | all five |
+| `darwin-arm64` | all five |
+| `linux-x64` | all five |
+| `linux-arm64` | Lune, StyLua, luau-lsp |
+| `darwin-x64` | Lune, StyLua, luau-lsp |
+
+Selene 0.32.0 and Luau 0.745 ship no ARM64 Linux build and no Intel macOS build, so those two targets get three tools instead of five; the workspace runtime reports the missing ones as blocked rather than failing silently. **Windows ARM64 is unsupported** — StyLua, Selene and Luau publish x64-only Windows assets. Every pinned asset is a fixed GitHub release URL with a SHA-256 recorded in `toolchain/lock.json`; no download uses a floating tag.
 
 ## Install
 
 Prerequisites: DeepSeek Harness Desktop 0.2.2-rc.3, Roblox Studio installed and signed in, and your model-provider accounts signed into DSH. A GitHub-spec installation uses Git through DSH's package installer. System Node/npm/npx, Rokit, Lune, StyLua and Selene are not runtime prerequisites: the bundle uses DSH's packaged runtime and automatically provisions its pinned command-line tools. Repository access does not transfer credentials.
 
-Native toolchain targets in this release: **Windows x64 and Apple Silicon macOS**. The pinned Selene/Luau macOS assets are ARM64-only, so Intel macOS and Windows ARM64 fail with an explicit unsupported-platform setup message rather than silently installing the wrong architecture. macOS assets are checksum-verified; a live Mac smoke test remains required.
+Native toolchain targets: `win32-x64`, `darwin-arm64`, `linux-x64`, plus partial sets on `linux-arm64` and `darwin-x64` (see Platforms). Windows ARM64 fails with an explicit unsupported-platform message rather than installing the wrong architecture.
 
 **Fully quit DSH Desktop**, then run in Terminal:
 
 ```sh
+# registry install (updates in place from the Installed tab)
+dsh plugin --profile desktop add "@alexmbright/dsh-roblox-development"
+
+# or pin an exact Git commit through DSH's Git installer
 dsh plugin --profile desktop add "github:alexmbright/dsh-roblox-development"
 ```
+
+Registry installs are the managed path: DSH lists newer versions on the Installed tab and updates in place. Git installs are pinned to an immutable commit, so they update only through the plugin index below.
+
+A **linked local checkout** (`dsh ... add /absolute/path`) installs the link only and does **not** install the package's own dependencies. The `robloxstudio` MCP row then fails to mount and the preset reports "Failed to load". Run `npm install` in the checkout first, or install from the registry.
 
 Use your actual profile name if it is not `desktop`. Reopen DSH and start a **new Roblox development session**. No manual clone, setup, npm build approval, or machine-specific configuration generation is required. If `dsh` is not on your terminal PATH, use your DSH installation's CLI launcher.
 
@@ -110,7 +139,7 @@ npm test
 
 No build or install lifecycle scripts are needed. The legacy `npm run setup` remains an optional maintainer utility and defaults to a checkout under the current workspace; it is not invoked by sessions and does not change the installed skill pin. Local development installation uses plugin_manager with the absolute directory.
 
-The committed patch resolves installed resources at runtime; it contains no generated home paths. Keep caches, environment files, credentials, logs, game projects and session records out of Git and release attachments. Review tracked files and full history before release. Automated checks are defense in depth, not a guarantee that future files contain no secrets. `private: true` prevents accidental npm publication, not GitHub installation or repository visibility. This project is not affiliated with Roblox or its dependency authors.
+The committed patch resolves installed resources at runtime; it contains no generated home paths. Keep caches, environment files, credentials, logs, game projects and session records out of Git and release attachments. Review tracked files and full history before release. Automated checks are defense in depth, not a guarantee that future files contain no secrets. The package is published publicly to npm; `private` is not set, and `publishConfig.access` is `public`. This project is not affiliated with Roblox or its dependency authors.
 
 ## Verification limits
 

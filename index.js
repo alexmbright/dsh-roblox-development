@@ -4,7 +4,10 @@ export const inject = ['tools'];
 
 // Only the preset's context should mount this listener. Cordis owns its lifetime
 // and DSH scope-filtered dispatch limits it to calls from that preset's agents.
-export function apply(ctx) {
+export function apply(ctx, config) {
+  // The bundle-level entry mounts this package only so its Client half is composed.
+  // It passes compat:false and must not register the result listener there.
+  if (config?.compat === false) return;
   return ctx.on('tools/post-execute', async (exec, result, next) => {
     const before = candidate(exec, result);
     const decision = await next(); // Downstream policy and errors always win.

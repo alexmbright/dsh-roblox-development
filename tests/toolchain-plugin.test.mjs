@@ -7,8 +7,16 @@ import { apply as runtimeApply, discoverStandardSeeds, selectManagedPlan } from 
 import { buildPreamble, stateLayout } from '../workspace-env.js';
 const manifest = JSON.parse(fs.readFileSync(new URL('../toolchain/lock.json', import.meta.url), 'utf8'));
 test('all advertised platforms include exact pins, fixed assets and SHA-256', () => {
-  assert.deepEqual(Object.keys(manifest.platforms).sort(), ['darwin-arm64', 'win32-x64']);
-  for (const platform of Object.values(manifest.platforms)) {
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']);
+  for (const tool of Object.values(manifest.platforms).flatMap(platform => platform.tools)) {
+    assert.match(tool.sha256, /^[a-f0-9]{64}$/);
+    assert.match(tool.url, /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/[^/]+\//);
+    assert.ok(!tool.url.includes('latest'));
+  }
+  // Upstream publishes no Selene or Luau asset for these two targets.
+  assert.deepEqual(manifest.platforms['linux-arm64'].tools.map(tool => tool.name).sort(), ['luau-lsp', 'lune', 'stylua']);
+  assert.deepEqual(manifest.platforms['darwin-x64'].tools.map(tool => tool.name).sort(), ['luau-lsp', 'lune', 'stylua']);
+  for (const platform of [manifest.platforms['win32-x64'], manifest.platforms['darwin-arm64'], manifest.platforms['linux-x64']]) {
     assert.deepEqual(platform.tools.map(tool => tool.name), ['lune', 'stylua', 'selene', 'luau', 'luau-lsp']);
     for (const tool of platform.tools) {
       assert.match(tool.sha256, /^[a-f0-9]{64}$/);

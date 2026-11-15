@@ -53,7 +53,7 @@ test('dispatch without any route fields is denied with an actionable message', (
   const verdict = evaluateDispatch(spawn({ description: 'x', prompt: 'y' }), policy);
   assert.equal(verdict.kind, 'deny');
   assert.match(verdict.reason, /provider, model and reasoning_effort together/);
-  assert.match(verdict.reason, /routes\.json/);
+  assert.match(verdict.reason, /roblox_routes/);
   assert.match(verdict.reason, /missing: provider, model, reasoning_effort/);
   assert.equal(verdict.info.code, 'ROUTING_ROUTE_REQUIRED');
 });

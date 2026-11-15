@@ -24,7 +24,7 @@ test('package declares preset compatibility plus shared toolchain bootstrap', ()
   assert.ok(!patch.includes('@local/dsh-roblox-tiered'));
   assert.deepEqual(manifest.dependencies, { '@chrrxs/robloxstudio-mcp': '3.4.3' });
   assert.deepEqual(Object.keys(manifest.scripts), ['setup', 'test']);
-  assert.match(patch, /^- insert:\s*\n {4}- id: roblox-toolchain/m);
+  assert.match(patch, /^- insert:\s*\n {4}- id: roblox-routing-controls\n {6}name: '@alexmbright\/dsh-roblox-development\/routing-controls'\n {4}- id: roblox-toolchain/m);
   assert.match(patch, /name: '@alexmbright\/dsh-roblox-development\/toolchain'/);
   assert.doesNotMatch(patch, /roblox-worker-guard|roblox_worker_policy|roblox_studio_control/);
   assert.match(patch, /^ {4}- id: preset-roblox/m);
@@ -34,9 +34,10 @@ test('package declares preset compatibility plus shared toolchain bootstrap', ()
   assert.doesNotMatch(patch, /dsh-(?:workflow|tool-workflow|agent-teams|llm)-/);
   assert.match(patch, /^- id: subagent-model-selection-settings\n  config:\n    enabled: true/m);
   assert.equal((patch.match(/name: '@deepseek-ai\/dsh-mcp-client'/g)||[]).length, 2);
+  assert.match(patch, /roblox_run_tool/);
   assert.match(patch, /serverName: Roblox_Studio/);
   assert.match(patch, /serverName: robloxstudio/);
-  assert.match(patch, /resolve\('@chrrxs\/robloxstudio-mcp'\), '--auto-install-plugin'/);
+  assert.match(patch, /resolve\('@chrrxs\/robloxstudio-mcp'\)[^]*?'--auto-install-plugin'/);
   assert.doesNotMatch(patch, /@latest|command: npx/);
   assert.doesNotMatch(patch, /\t|[A-Z]:[\\/]Users[\\/]|\/Users\/|\/home\//i);
   assert.match(patch, /command: !!js process.execPath/);
@@ -168,7 +169,7 @@ test('distribution list covers every authored resource and only intended runtime
   const patterns = manifest.files.map(p => new RegExp('^' + p.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'));
   for (const file of await walk()) {
     assert.ok(file === 'package.json' || file.startsWith('vendor/') || file.startsWith('toolchain/') || patterns.some(p => p.test(file)), `unlisted: ${file}`);
-    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
+    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
   }
   assert.match(await text('THIRD-PARTY-NOTICES.md'), /Copyright \(c\) 2026 TabooHarmony/);
 });

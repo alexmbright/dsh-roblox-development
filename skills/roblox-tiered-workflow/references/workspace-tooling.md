@@ -1,3 +1,19 @@
+## Run checks through the tool
+
+`roblox_run_tool` is the supported way to run the provisioned binaries:
+
+```js
+roblox_run_tool({ tool: 'selene', args: ['check', '.'], cwd: '/path/to/project' })
+roblox_run_tool({ tool: 'lune',   args: ['run', 'scripts/check.luau'] })
+roblox_run_tool({ tool: 'stylua', args: ['--check', 'src'] })
+```
+
+Supported tools: `lune`, `stylua`, `selene`, `luau`, `luau-analyze`, `luau-compile`, `luau-lsp`.
+The call runs in the host process against the exact pinned executable and returns
+`{ exitCode, stdout, stderr, truncated }`. It needs no shell approval and never resolves a
+different version from `PATH`, so prefer it over `bash` for these binaries. The notes below
+describe the environment that preamble sets up when a shell step is genuinely required.
+
 # Workspace-local routine tooling
 
 ## Run checks without permission escalation

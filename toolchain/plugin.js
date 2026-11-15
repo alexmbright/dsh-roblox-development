@@ -11,6 +11,8 @@ export const LOCK = JSON.parse(readFileSync(new URL('./lock.json', import.meta.u
 export function apply(ctx) {
   const directory = ctx.profileContext?.dir;
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) throw new Error('Roblox toolchain needs a DSH profile directory.');
+  // One shared install per profile. Never per workspace: the binaries are pinned and reused
+  // by every project, and copying them into each workspace would duplicate them.
   const root = path.join(directory, 'roblox-toolchain');
   const controller = new AbortController();
   let state = { status: 'installing', installRoot: root, tools: [], issues: [] };
@@ -52,7 +54,13 @@ export function apply(ctx) {
         await delay(1000 * (attempt + 1), undefined, {signal:controller.signal});
       }
     }
-  })().then(result => { state = result; return state; }, error => {
+  })().then(result => {
+    state = result;
+    // Announce the settled install so a preset-scoped listener can allow this directory in
+    // the session sandbox the moment it exists, rather than on the first tool dispatch.
+    try { ctx.emit?.('roblox-toolchain/ready', { installRoot: root, status: state.status }); } catch {}
+    return state;
+  }, error => {
     const detail = error.cause?.message ? `${error.message}: ${error.cause.message}` : error.message;
     state = { status: 'failed', installRoot: root, tools: [], issues: [detail] };
     ctx.logger?.warn?.(`Roblox toolchain setup failed: ${error.message}`);

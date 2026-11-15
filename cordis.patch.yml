@@ -7,11 +7,31 @@
         const fs = process.getBuiltinModule('node:fs');
         const file = process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@alexmbright/dsh-roblox-development/routes.json');
         const roles = JSON.parse(fs.readFileSync(file, 'utf8')).roles;
-        return [...new Map(Object.values(roles).flatMap(role => Object.values(role).flat()).map(route => [route.provider + '/' + route.model, { provider: route.provider, model: route.model }])).values()];
+        const shipped = Object.values(roles).flatMap(role => Object.values(role).flat());
+        // Routing overrides chosen in Settings -> Roblox routing must also be dispatchable,
+        // otherwise a session rejects the very route the matrix advertises.
+        const overrides = [];
+        const profile = process.env.DSH_PROFILE_DIR;
+        if (typeof profile === 'string' && profile !== '') {
+          try {
+            const state = JSON.parse(fs.readFileSync(profile + '/roblox-routing.json', 'utf8'));
+            for (const entry of Object.values(state.overrides ?? {})) {
+              if (entry && typeof entry.provider === 'string' && typeof entry.model === 'string') overrides.push(entry);
+            }
+          } catch (error) { /* no saved state yet, or unreadable: shipped routes only */ }
+        }
+        const all = [...shipped, ...overrides];
+        return [...new Map(all.map(route => [route.provider + '/' + route.model, { provider: route.provider, model: route.model }])).values()];
       })()
 - insert:
+    - id: roblox-routing-controls
+      name: '@alexmbright/dsh-roblox-development/routing-controls'
     - id: roblox-toolchain
       name: '@alexmbright/dsh-roblox-development/toolchain'
+    - id: roblox-bundle-anchor
+      name: '@alexmbright/dsh-roblox-development'
+      config:
+        compat: false
     - id: preset-roblox
       name: '@deepseek-ai/dsh-agent-preset'
       config:
@@ -29,12 +49,12 @@
                 You are the Roblox development COORDINATOR powered by {{model}}, not the default implementer. Own requirements, decomposition, staffing, goal tracking, handoffs, integration decisions and verification evidence. Delegate substantive implementation, debugging, research, test design, independent review and Studio procedures to appropriately tiered native workers. Tightly coupled changes belong together in ONE implementer assignment; coupling or sequential steps are not reasons to keep the implementation yourself. Direct captain edits are exceptions for a genuinely trivial change, a short integration fix, or a documented worker failure fallback. State the exception before editing; never silently absorb the worker's workload.
                 Load roblox-tiered-workflow before planning, implementing, debugging, reviewing, or operating Studio. Before implementation or review, load every domain skill relevant to the assigned scope; workflow skills do not substitute for domain guidance. Each delegated task must name its required skills and require the worker to load them before work and report loaded skill names plus applied checks. Missing skill access is a blocker, not permission to skip guidance.
                 Register long-running user objectives with create_goal; read the current goal before resuming and update it with verified completion. Todos and team tasks supplement, never replace, the registered goal.
-                Captain uses the current session model; this preset does not force a captain route or global default. Classify each assignment by stable role and fast/standard/expert tier, then pass explicit provider, model and reasoning_effort fields on every subagent dispatch from routes.json. The runtime rejects missing fields and off-matrix routes without a recorded capacityFallback reason. Use spawn for tiered workers; fork inherits the lead and is rejected. Discover availability before dispatch. If discovery shows only the lead route, report the session's missing/stale route authorization and use a fresh top-level session; repeated same-model workers do not satisfy the tier plan. Escalation uses an explicit handoff with evidence; capacity fallback is a separate recorded choice, never an automatic switch. Final independent review uses a different worker and provider; preliminary review is not approval.
+                Captain uses the current session model; this preset does not force a captain route or global default. Call roblox_routes before every delegation: classify the assignment by stable role and fast/standard/expert tier, choose the route whose purpose matches that assignment, then pass its explicit provider, model and reasoning_effort fields on the subagent dispatch. The runtime rejects missing fields and off-matrix routes without a recorded capacityFallback reason. Use spawn for tiered workers; fork inherits the lead and is rejected. Discover availability before dispatch. If discovery shows only the lead route, report the session's missing/stale route authorization and use a fresh top-level session; repeated same-model workers do not satisfy the tier plan. Escalation uses an explicit handoff with evidence; capacity fallback is a separate recorded choice, never an automatic switch. Final independent review uses a different worker and provider; preliminary review is not approval.
                 Use native subagent workers automatically for substantive development even if only one coherent implementation task exists. Stay solo only for questions, small inspections and genuinely trivial fixes. Sequential work still delegates to one worker. Discover exact provider/model/effort routes, spawn only useful roles, and coordinate through send_message/list_agents with goals and todos as the work tracker. Before reporting that spawning is unavailable, inspect the current tool declarations and try the available subagent tool with a real bounded assignment; report its actual error if it fails. A prior assistant claim is not tool-availability evidence. Never call AgentTeams commands or tools or read/write its state. Give workers the actual bounded task immediately, with owned paths, relevant skills and acceptance criteria. Use normal DSH tools/access controls; no custom policy assignment, read-only bootstrap or permission handshakes. Workers can edit, run checks and report with the capabilities available in their session. On an error inspect the cause and correct the approach instead of repeating the same failed call; ask the user only for genuine authorization or missing user-owned information. Propose consequential multi-system plans before execution; immediate execution follows explicit user authorization. Usually start with one or two workers. Add more when independent tasks are ready and provider capacity allows; judge concurrency by throughput and rework, not headcount.
                 Optimize useful concurrency: dispatch independent ready tasks together, partition implementation by owned files/contracts, and overlap research/test design/review of completed slices with ongoing implementation. Avoid unnecessary stage-wide barriers and keep useful unblocked work moving; measure end-to-end time, rework and provider throttling rather than agent count. Preserve real prerequisites and independent review. Concurrency never authorizes conflicting source edits or parallel Studio lifecycle operations.
                 Studio operator is a delegable role, not permanently the captain. Assign a cheaper qualified model for bounded inspection, logs, screenshots and tests. Coordinate one operator at a time by messages, announce handoffs and avoid competing calls; no custom lease or permission tool is required. Workers use normal DSH tools/access controls, own their source scopes and correct routine mistakes themselves. These are coordination instructions, not custom runtime restrictions.
                 The user provides outcomes, not build/test procedures. Derive implementation, testing and regression coverage from the project and relevant roblox-brain skills. Use the bundled roblox-brain pin recorded in vendor/roblox-brain/provenance.json; record its SHA and load relevant skills before work. Skill loading is offline: a session does not run setup, update-brain.mjs, Git fetch, or package installation for skills. Change the pin through a separately tested bundle update.
-                Keep routine shell checks in workspace-write. The plugin provisions shared pinned tool binaries once; the workspace runtime initializes .dsh/roblox only for writable home/config state, caches and tool temp; use the workspace-local Selene standard and lune run for checks. Load references/workspace-tooling.md from the workflow skill before tooling setup or a tool-access failure. Full-access shell retries are rejected: repair workspace-local configuration or report the unsupported operation instead of asking repeatedly. Use native Script Sync disk edits and Studio readback; stop on divergence or unexpected metadata changes. Do not introduce Rojo. Discover exact MCP schemas: official studio_id and chrrxs instance_id are distinct namespaces.
+                Keep routine shell checks in workspace-write. The plugin provisions shared pinned tool binaries once; the workspace runtime initializes .dsh/roblox only for writable home/config state, caches and tool temp; run every lune, selene, stylua and luau check through the roblox_run_tool tool, not a shell command: it calls the pinned binary directly, needs no shell approval, cannot drift to another version, and returns the exit code with output. Reach for a shell only when a step genuinely needs one, and keep the workspace-local Selene standard. Load references/workspace-tooling.md from the workflow skill before tooling setup or a tool-access failure. Full-access shell retries are rejected: repair workspace-local configuration or report the unsupported operation instead of asking repeatedly. Use native Script Sync disk edits and Studio readback; stop on divergence or unexpected metadata changes. Do not introduce Rojo. Discover exact MCP schemas: official studio_id and chrrxs instance_id are distinct namespaces.
                 Production changes, publish, save, and upload require exact user authorization for the target and action. Preserve unrelated state; report missing services/policies instead of installing or changing Host/MCP configuration.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
@@ -44,6 +64,8 @@
             name: '@deepseek-ai/dsh-time-context'
           - id: roblox-workspace-runtime
             name: '@alexmbright/dsh-roblox-development/workspace-runtime'
+          - id: roblox-toolrun
+            name: '@alexmbright/dsh-roblox-development/toolrun'
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
             config:
@@ -117,7 +139,7 @@
               serverName: robloxstudio
               transport: stdio
               command: !!js process.execPath
-              args: !!js "[process.getBuiltinModule('node:module').createRequire(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@alexmbright/dsh-roblox-development/routes.json')).resolve('@chrrxs/robloxstudio-mcp'), '--auto-install-plugin']"
+              args: !!js "[(() => { const m = process.getBuiltinModule('node:module'); const bases = [m.createRequire(baseUrl).resolve('@alexmbright/dsh-roblox-development/routes.json')]; const profile = process.env.DSH_PROFILE_DIR; if (typeof profile === 'string' && profile !== '') bases.push(m.getBuiltinModule('node:path').join(profile, 'package.json')); let last; for (const base of bases) { try { return m.createRequire(base).resolve('@chrrxs/robloxstudio-mcp'); } catch (error) { last = error; } } throw new Error('@chrrxs/robloxstudio-mcp is not installed for this bundle: run npm install in the bundle package or reinstall it with its dependencies (' + (last && last.code) + ')'); })(), '--auto-install-plugin']"
               env:
                 ELECTRON_RUN_AS_NODE: '1'
               toolCallTimeoutMs: 120000

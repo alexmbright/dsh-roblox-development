@@ -240,6 +240,31 @@ export function discoverStandardSeeds({ root, workdir, source, config, fsLike = 
 }
 
 /**
+ * Copy any missing Selene standard-library seed into its destination.
+ *
+ * Applying seeds here, in the host process, keeps them independent of the shell preamble: a
+ * command that is already marked, an unwritable containment result or a failing preamble
+ * command would otherwise silently skip the copy, and Selene then tries to regenerate the
+ * standard into its user cache, which the sandbox blocks.
+ * @param fsLike - filesystem surface (`existsSync`, `copyFileSync`).
+ * @param seeds - `{ source, destination }` pairs from {@link discoverStandardSeeds}.
+ * @returns the destinations actually written.
+ */
+export function applyStandardSeeds(fsLike, seeds) {
+  const written = [];
+  for (const seed of Array.isArray(seeds) ? seeds : []) {
+    try {
+      if (fsLike.existsSync(seed.destination)) continue;
+      fsLike.copyFileSync(seed.source, seed.destination, 1);
+      written.push(seed.destination);
+    } catch {
+      // A seed is an optimization: never fail a command because it could not be written.
+    }
+  }
+  return written;
+}
+
+/**
  * Build the wrapping shell delegate over the real executor. Pure wiring:
  * all containment behavior is delegated to `workspace-env` helpers so tests
  * can drive it with a fake shell and a fake fs.
@@ -327,6 +352,11 @@ export function createShellDelegate(base, options = {}) {
         return base.execute(spec);
       }
       const marked = isPreambleMarked(spec.command, dialect);
+      // Seed the Selene standard natively before the shell runs. The preamble copy stays in
+      // place for the node-script variant, but seeds must not depend on it.
+      const prepared = c.writable ? prepareArgs(c.root, spec) : null;
+      const seededNatively = prepared !== null && Array.isArray(prepared.seeds);
+      if (seededNatively) applyStandardSeeds(fsLike, prepared.seeds);
       const env = c.env;
       const command = marked
         ? spec.command
@@ -335,7 +365,7 @@ export function createShellDelegate(base, options = {}) {
           layout: c.layout,
           env,
           writable: c.writable,
-          prepare: c.writable ? prepareArgs(c.root, spec) : null,
+          prepare: c.writable && !seededNatively ? prepareArgs(c.root, spec) : null,
           lune: c.plan.blockedTools?.includes('lune') ? null : c.plan.lune,
           warnings: c.plan.warnings,
           blockedTools: c.plan.blockedTools,

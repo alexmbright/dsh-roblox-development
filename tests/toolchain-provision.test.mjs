@@ -300,3 +300,19 @@ test('aborted-before-start and injected download failure leave no lock or execut
   await assert.rejects(ensureToolchain({ ...options, fetchImpl: async () => { throw new Error('offline'); } }), /offline/);
   assert.deepEqual(await fs.readdir(root), []);
 });
+
+test('every pinned platform declares https URLs and 64-hex digests', async () => {
+  const { readFileSync } = await import('node:fs');
+  const lock = JSON.parse(readFileSync(new URL('../toolchain/lock.json', import.meta.url), 'utf8'));
+  for (const [platform, spec] of Object.entries(lock.platforms)) {
+    assert.ok(Array.isArray(spec.tools) && spec.tools.length > 0, platform + ' has tools');
+    for (const tool of spec.tools) {
+      assert.match(tool.url, /^https:\/\/github\.com\//, `${platform}/${tool.name} url`);
+      assert.match(tool.sha256, /^[a-f0-9]{64}$/, `${platform}/${tool.name} digest`);
+      for (const binary of tool.binaries) assert.ok(binary.path.length > 0, `${platform}/${tool.name} binary path`);
+    }
+  }
+  for (const platform of ['win32-x64', 'darwin-arm64', 'linux-x64']) {
+    assert.equal(lock.platforms[platform].tools.length, 5, platform + ' has the full set');
+  }
+});
