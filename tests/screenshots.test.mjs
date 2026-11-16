@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { captureId, capturesIn, collectTree, registerScreenshotTool, captureRefs } from '../screenshots.js';
+import { captureId, capturesIn, collectTree, registerScreenshotTool, captureRefs, storeTextOnlyCaptures, STORED_MARKER } from '../screenshots.js';
+import { buildScreenshotRoutes, rootSessionOf } from '../screenshot-bridge.js';
 import { loadBrain, sessionState } from '../skill-policy.js';
 import { createVisualGuard } from '../routing.js';
 import { replyCorrections } from '../visual-policy.js';
@@ -173,4 +174,74 @@ test('a gate reviewer that never viewed a screenshot cannot pass the gate', asyn
   assert.match(denial.reason, /reviewer "reviewer" never viewed a screenshot/);
   const sighted = [{ name: 'reviewer', audit: { assets: { ...blindRow[0].audit.assets, screenshots: 3 } } }];
   assert.equal(completionDenial({ root, objective: 'polish the UI', lead, workers: sighted, runScript: () => undefined }), undefined);
+});
+
+test('a capture by a text-only model is stored and shared, without an image in its context', async () => {
+  const saved = [];
+  const ctx = { get: key => (key === 'attachments'
+    ? { saveImages: async inputs => inputs.map((input, index) => { saved.push(input); return ref(`sha256-stored${index}abcdefghij`, { width: 1280, height: 720 }); }) }
+    : undefined) };
+  const hook = storeTextOnlyCaptures(ctx);
+  const exec = { name: 'mcp__robloxstudio__capture_screenshot' };
+  const result = {
+    isError: false,
+    value: { content: [{ type: 'text', text: '{"width":1280}' }, { type: 'image', data: Buffer.from('png!').toString('base64'), mimeType: 'image/png' }] },
+    content: [{ type: 'text', text: '[image unavailable: image/png; model "deepseek-flash" does not declare image input]' }],
+  };
+  const decision = await hook(exec, result, async () => ({ kind: 'accept' }));
+  assert.equal(saved.length, 1);
+  assert.equal(decision.content.some(block => block.type === 'image'), false, 'the model still reads text only');
+  const text = decision.content[0].text;
+  assert.match(text, /cannot view images; the capture is stored and shared/);
+  const logged = session('w', [
+    { type: 'tool/call', time: T0, data: { name: exec.name, callId: 'x', arguments: '{}' } },
+    { type: 'tool/result', time: T0, data: { message: { toolCallId: 'x', content: decision.content } } },
+  ]);
+  const [found] = capturesIn(logged, 'qa');
+  assert.equal(found.id, captureId('sha256-stored0abcdefghij'));
+  assert.equal(found.stored, true);
+  assert.equal(found.suspicious, false);
+  assert.ok(text.includes(STORED_MARKER));
+  const seeing = await hook(exec, { ...result, content: [{ type: 'image', attachment: ref('a') }] }, async () => ({ kind: 'accept' }));
+  assert.deepEqual(seeing, { kind: 'accept' }, 'image-capable models are left to DSH');
+});
+
+test('tiny and fallback captures are flagged suspicious in listings', () => {
+  const tiny = capturesIn(session('s', capture('sha256-tinytinytiny123', { tool: 'mcp__robloxstudio__capture_screenshot' })
+    .map(event => (event.type === 'tool/result'
+      ? { ...event, data: { message: { ...event.data.message, content: [{ type: 'image', attachment: ref('sha256-tinytinytiny123', { width: 256, height: 256 }) }] } } }
+      : event))), 'qa');
+  assert.equal(tiny[0].suspicious, true);
+  assert.equal(tiny[0].server, 'robloxstudio');
+});
+
+test('the sidebar bridge lists a worker Session\'s whole tree and serves only its images', async () => {
+  const { ctx, impl } = tree();
+  assert.equal(await rootSessionOf(ctx, 'impl'), 'lead');
+  assert.equal(await rootSessionOf(ctx, 'qa'), 'lead', 'settled worker resolved through its durable header');
+  const routes = Object.fromEntries(buildScreenshotRoutes(ctx).map(route => [route.path.split('/').pop(), route.handler]));
+  const response = () => {
+    const res = { status: 0, headers: {}, body: [], headersSent: false };
+    res.writeHead = (status, headers) => { res.status = status; res.headers = headers; res.headersSent = true; };
+    res.end = chunk => { if (chunk) res.body.push(Buffer.from(chunk)); res.done = true; };
+    res.write = chunk => { res.body.push(Buffer.from(chunk)); return true; };
+    res.on = () => res; res.once = () => res; res.emit = () => false; res.removeListener = () => res;
+    res.destroy = () => {};
+    return res;
+  };
+  const request = (method, url, body) => {
+    const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body))];
+    return { method, url, headers: { host: '127.0.0.1:1234', origin: 'http://127.0.0.1:1234' }, async *[Symbol.asyncIterator]() { yield* chunks; } };
+  };
+  const listRes = response();
+  await routes.list(request('POST', '/api/roblox-screenshots/list', { sessionId: impl.id }), listRes);
+  const listed = JSON.parse(Buffer.concat(listRes.body).toString());
+  assert.equal(listed.captures.length, 2);
+  assert.equal(listed.captures[0].path, undefined, 'host paths are not sent to the browser');
+  const cross = response();
+  await routes.list({ ...request('POST', '/x', { sessionId: 'lead' }), headers: { host: 'evil.example', origin: 'http://evil.example' } }, cross);
+  assert.equal(cross.status, 403);
+  const missing = response();
+  await routes.image(request('GET', `/api/roblox-screenshots/image?session=lead&id=cap-zzzzzzzzzz`), missing);
+  assert.equal(missing.status, 404);
 });

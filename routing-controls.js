@@ -17,6 +17,8 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { loadRoutes, routeKey } from './routing.js';
+import { readJson, writeJson, sameOrigin } from './http-bridge.js';
+import { mountScreenshotBridge } from './screenshot-bridge.js';
 
 const BRIDGE_PREFIX = '/api/roblox-controls';
 const ROUTE_FIELDS = ['provider', 'model', 'reasoning_effort'];
@@ -280,35 +282,6 @@ async function recompute(llm) {
   return effective;
 }
 
-/** Read one JSON body with a bounded size; `undefined` for malformed or oversized input. */
-async function readJson(req, limitBytes = 64 * 1024) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > limitBytes) return undefined;
-    chunks.push(chunk);
-  }
-  if (size === 0) return {};
-  try {
-    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    return parsed !== null && typeof parsed === 'object' ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Answer one request as JSON. */
-function writeJson(res, status, body) {
-  const payload = Buffer.from(JSON.stringify(body));
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': String(payload.length),
-    'cache-control': 'no-store',
-  });
-  res.end(payload);
-}
-
 /** Write the state atomically. */
 function saveState(next) {
   try {
@@ -329,34 +302,6 @@ function loadState() {
     return parsed !== null && typeof parsed === 'object' ? normalize(parsed) : undefined;
   } catch {
     return undefined;
-  }
-}
-
-/**
- * Admit only requests addressed to the loopback listener, and only when a browser-supplied
- * Origin matches the Host it is addressed to. This keeps the bridge from answering a
- * cross-origin page or a DNS-rebinding request that resolves here.
- * @param req - the incoming request.
- * @returns whether the request may be served.
- */
-function sameOrigin(req) {
-  const host = req?.headers?.host;
-  if (typeof host !== 'string' || host === '') return false;
-  let hostname;
-  try {
-    hostname = new URL(`http://${host}`).hostname.replace(/^\[|\]$/g, '');
-  } catch {
-    return false;
-  }
-  if (!['127.0.0.1', 'localhost', '::1'].includes(hostname)) return false;
-  const site = req.headers['sec-fetch-site'];
-  if (typeof site === 'string' && site === 'cross-site') return false;
-  const origin = req.headers.origin;
-  if (origin === undefined) return true;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
   }
 }
 
@@ -487,13 +432,23 @@ export function apply(ctx, config) {
     return () => { for (const dispose of disposers) dispose(); };
   };
 
+  // The screenshots tab's bridge rides the same bundle-level row, so it serves every Session.
+  let dropScreenshots;
+  try {
+    dropScreenshots = mountScreenshotBridge(ctx);
+  } catch (error) {
+    console.warn(`[roblox-screenshots] bridge unavailable: ${error?.message ?? error}`);
+  }
+
   const server = ctx.get('webServer');
   if (typeof ctx.inject === 'function') {
     // The carrier is optional: a headless composition still owns and publishes routing state.
     ctx.inject(['webServer'], sctx => sctx.effect(() => mount(sctx.get('webServer')), 'roblox-routing: bridge'));
-    return undefined;
+    return dropScreenshots;
   }
-  return server === undefined ? undefined : mount(server);
+  if (server === undefined) return dropScreenshots;
+  const dropRouting = mount(server);
+  return () => { dropRouting(); dropScreenshots?.(); };
 }
 
 /** Profile configuration: the same state, editable through the loader row as well. */

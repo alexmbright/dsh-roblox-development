@@ -1,6 +1,6 @@
 {
   "name": "@alexturbo/dsh-roblox-development",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": false,
   "type": "module",
   "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",
@@ -31,6 +31,9 @@
     "skill-policy.js",
     "visual-policy.js",
     "screenshots.js",
+    "screenshot-bridge.js",
+    "studio-ids.js",
+    "http-bridge.js",
     "tools/check-visual-gate.mjs",
     "docs/smaller-launch/VISUAL_GATE.md",
     "coordination.js",
@@ -76,7 +79,8 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-renderer"
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
       ],
       "platform": "web"
     }

@@ -229,6 +229,125 @@ window.__ModuleLoader__.load({
         h(RoutingPanel));
     }
 
+    /* ------------------------------------------------------------------------------------------ */
+    /* Screenshots tab (right sidebar)                                                             */
+    /* ------------------------------------------------------------------------------------------ */
+
+    const SHOTS = 'api/roblox-screenshots';
+    const TAB_ID = '@alexturbo/dsh-roblox-development/screenshots';
+    const TAB_KIND = 'roblox-screenshots';
+    const POLL_MS = 4000;
+    const shotUrl = path => {
+      try {
+        return new URL(`${SHOTS}/${path}`, document.baseURI).toString();
+      } catch {
+        return `${SHOTS}/${path}`;
+      }
+    };
+    const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px', padding: '10px' };
+    const card = { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', minWidth: 0 };
+    const thumb = { width: '100%', aspectRatio: '16 / 10', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(128,128,128,0.35)', cursor: 'zoom-in', background: 'rgba(128,128,128,0.08)' };
+    const badge = { fontSize: '10px', padding: '0 5px', borderRadius: '4px', border: '1px solid #c98a2b', color: '#c98a2b', alignSelf: 'flex-start' };
+    const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
+    /** Every capture in the shown Session's worker tree, refreshed while visible. */
+    function ScreenshotsBody({ useTabInfo, sessionId }) {
+      const { tab } = useTabInfo();
+      const visible = tab?.visible !== false;
+      const [state, setState] = useState({ status: 'loading', captures: [], error: null });
+      const [filter, setFilter] = useState('');
+      const [hideSuspicious, setHideSuspicious] = useState(false);
+      const [open, setOpen] = useState(null);
+
+      const load = useCallback(async () => {
+        try {
+          const response = await fetch(shotUrl('list'), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+            signal: AbortSignal.timeout(20000),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || data.ok === false) throw new Error(data.message ?? `HTTP ${response.status}`);
+          setState({ status: 'ready', captures: data.captures ?? [], error: null });
+        } catch (error) {
+          setState(current => ({ ...current, status: current.captures.length > 0 ? 'ready' : 'failed', error }));
+        }
+      }, [sessionId]);
+
+      useEffect(() => {
+        if (!visible) return undefined;
+        load();
+        const timer = setInterval(load, POLL_MS);
+        return () => clearInterval(timer);
+      }, [load, visible]);
+
+      useEffect(() => {
+        if (open === null) return undefined;
+        const onKey = event => { if (event.key === 'Escape') setOpen(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [open]);
+
+      if (state.status === 'loading') return h('div', { style: { ...muted, padding: '12px' } }, 'Loading screenshots…');
+      if (state.status === 'failed') {
+        return h('div', { style: { padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' } },
+          h('div', { style: notice('error'), role: 'alert' }, `Screenshots unavailable: ${state.error?.message ?? 'unknown error'}`),
+          h('button', { type: 'button', style: button, onClick: load }, 'Retry'));
+      }
+      const agents = [...new Set(state.captures.map(capture => capture.agent))];
+      const shown = state.captures.filter(capture => (filter === '' || capture.agent === filter) && !(hideSuspicious && capture.suspicious));
+      const src = capture => shotUrl(`image?session=${encodeURIComponent(sessionId)}&id=${encodeURIComponent(capture.id)}`);
+      const when = iso => {
+        try {
+          return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        } catch {
+          return iso;
+        }
+      };
+      const copy = text => { try { navigator.clipboard?.writeText(text); } catch { /* ignore */ } };
+
+      return h('div', { style: { height: '100%', overflow: 'auto' }, 'data-roblox-screenshots': true },
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', padding: '10px 10px 0', flexWrap: 'wrap' } },
+          h('span', { style: muted }, `${state.captures.length} capture${state.captures.length === 1 ? '' : 's'} from the lead and its workers`),
+          h('select', { 'aria-label': 'Filter by agent', value: filter, onChange: event => setFilter(event.target.value), style: { ...control, width: 'auto' } },
+            h('option', { value: '' }, 'All agents'),
+            ...agents.map(agent => h('option', { key: agent, value: agent }, agent))),
+          h('label', { style: { ...muted, display: 'flex', gap: '4px', alignItems: 'center' } },
+            h('input', { type: 'checkbox', checked: hideSuspicious, onChange: () => setHideSuspicious(!hideSuspicious) }),
+            'Hide suspicious')),
+        shown.length === 0
+          ? h('div', { style: { ...muted, padding: '12px' } }, state.captures.length === 0
+            ? 'No Studio captures yet. They appear here as soon as the lead or any worker runs screen_capture, capture_screenshot or capture_device_matrix.'
+            : 'No captures match the filter.')
+          : h('div', { style: grid },
+            ...shown.map(capture => h('figure', { key: capture.id, style: { ...card, margin: 0 } },
+              h('img', {
+                src: src(capture), alt: `${capture.agent} ${capture.label || capture.tool}`, loading: 'lazy', style: thumb,
+                onClick: () => setOpen(capture),
+              }),
+              h('figcaption', { style: { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 } },
+                h('span', { style: { ...ellipsis, fontWeight: 600 } }, `${capture.agent}${capture.label ? ` · ${capture.label}` : ''}`),
+                h('span', { style: { ...ellipsis, ...muted, fontSize: '11px' } }, `${when(capture.capturedAt)} · ${capture.width}×${capture.height} · ${capture.tool}`),
+                h('button', {
+                  type: 'button', title: 'Copy capture id', onClick: () => copy(capture.id),
+                  style: { ...button, padding: '1px 6px', fontSize: '11px', alignSelf: 'flex-start', fontFamily: 'monospace' },
+                }, capture.id),
+                capture.suspicious ? h('span', { style: badge, title: '256×256 or smaller, or a fallback capture: probably not the real viewport. It does not count for the visual gate.' }, 'suspicious') : null)))),
+        open === null ? null : h('div', {
+          role: 'dialog', 'aria-label': `Screenshot ${open.id}`,
+          onClick: () => setOpen(null),
+          style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'zoom-out', padding: '24px' },
+        },
+        h('img', { src: src(open), alt: open.id, style: { maxWidth: '100%', maxHeight: 'calc(100% - 40px)', objectFit: 'contain', borderRadius: '6px' } }),
+        h('div', { style: { color: '#fff', fontSize: '12px' } }, `${open.id} · ${open.agent}${open.label ? ` · ${open.label}` : ''} · ${when(open.capturedAt)}`)));
+    }
+
+    function ScreenshotsTitle({ useTabInfo }) {
+      const { tab } = useTabInfo();
+      return tab?.title ?? 'Roblox screenshots';
+    }
+
     return {
       inject: ['slots'],
       apply(ctx) {
@@ -238,6 +357,30 @@ window.__ModuleLoader__.load({
           order: 25,
           label: 'Roblox routing',
         }, RoutingSection));
+
+        // The right sidebar is optional in a composition: register the tab only where it exists.
+        if (typeof ctx.inject !== 'function') return;
+        ctx.inject(['sidebarRightTabs'], tabsCtx => {
+          tabsCtx.effect(() => tabsCtx.sidebarRightTabs.register({
+            id: TAB_ID,
+            kind: TAB_KIND,
+            priority: 'extension',
+            keepMounted: true,
+            title: () => 'Roblox screenshots',
+            guide: [{
+              id: 'screenshots',
+              order: 60,
+              title: () => 'Roblox screenshots',
+              description: () => 'Every Studio capture from the lead and its workers, with capture ids to share.',
+            }],
+          }), 'roblox-screenshots: tab type');
+          tabsCtx.effect(() => tabsCtx.slots.inject('sidebar.right.pane.tab', () => tabsCtx.slots.register(
+            { name: 'sidebar.right.pane.tab', key: TAB_ID, inject: sessionId => ({ sessionId }) }, ScreenshotsBody,
+          )), 'roblox-screenshots: tab body');
+          tabsCtx.effect(() => tabsCtx.slots.inject('sidebar.right.pane.tab.title', () => tabsCtx.slots.register(
+            { name: 'sidebar.right.pane.tab.title', key: TAB_ID }, ScreenshotsTitle,
+          )), 'roblox-screenshots: tab title');
+        });
       },
     };
   },

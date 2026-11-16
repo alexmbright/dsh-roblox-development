@@ -6,9 +6,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadBrain, sessionState } from '../skill-policy.js';
-import { createVisualGuard } from '../routing.js';
+import { createVisualGuard, registerVisualGateTool } from '../routing.js';
 import { checkVisualGate, parseGate } from '../tools/check-visual-gate.mjs';
-import { replyCorrections, runProjectScript } from '../visual-policy.js';
+import { replyCorrections } from '../visual-policy.js';
 import { statusContext } from '../coordination.js';
 
 const brain = loadBrain();
@@ -24,7 +24,8 @@ const callAndResult = (name, args, content, { time = T0, ok = true, turn = 1 } =
     { type: 'tool/result', time, data: { turn, message: { toolCallId: callId, isError: !ok, content } } },
   ];
 };
-const image = [{ type: 'image', attachment: { attachmentId: 'a', mediaType: 'image/png', bytes: 1, width: 1, height: 1 } }];
+const image = [{ type: 'image', attachment: { attachmentId: 'a', mediaType: 'image/png', bytes: 1, width: 1280, height: 720 } }];
+const tinyImage = [{ type: 'image', attachment: { attachmentId: 'b', mediaType: 'image/png', bytes: 1, width: 256, height: 256 } }];
 const shot = (time, tool = 'mcp__robloxstudio__capture_screenshot') => callAndResult(tool, {}, [{ type: 'text', text: '{}' }, ...image], { time });
 const dispatch = (name, prompt, route, { time = T0, turn = 1 } = {}) => callAndResult('subagent', { prompt, ...route }, [{ type: 'text', text: `started subagent ${name}` }], { time, turn });
 
@@ -64,13 +65,13 @@ function project(gate = PASS_GATE, { gateTime = T0 + 60_000, clientTime = T0 } =
   return root;
 }
 
-function harness(root, { objective = 'Polish the main menu UI and scene art', rows = [], mode, runScript = () => undefined } = {}) {
+function harness(root, { objective = 'Polish the main menu UI and scene art', rows = [], mode } = {}) {
   const ctx = { get: key => ({
     workingDirectory: { get: () => root },
     goals: { get: () => ({ objective }) },
   })[key] };
   const evidence = { rows: () => rows };
-  return createVisualGuard({ ctx, brain, evidence, roleRoutes: routesFor, mode, runScript });
+  return createVisualGuard({ ctx, brain, evidence, roleRoutes: routesFor, mode, collect: async () => ({ captures: [] }) });
 }
 const lead = events => ({ id: 'lead', header: {}, events });
 const worker = (events, prompt = reviewPrompt) => ({ id: 'w', header: { origin: 'subagent', parentSession: 'lead' },
@@ -116,7 +117,7 @@ test('a screenshot older than the last client change does not count', () => {
   const root = project(PASS_GATE, { clientTime: T0 + 30_000, gateTime: T0 + 60_000 });
   const { guard } = harness(root);
   const session = lead([...shot(T0), ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE, { time: T0 + 40_000 })]);
-  assert.match(guard(complete(session)).reason, /last screenshot predates src\/client\/Menu\.luau/);
+  assert.match(guard(complete(session)).reason, /last usable screenshot predates src\/client\/Menu\.luau/);
   const fresh = lead([...session.events, ...shot(T0 + 90_000)]);
   assert.equal(guard(complete(fresh)), undefined);
 });
@@ -135,23 +136,68 @@ test('non-visual objectives are not held to the visual gate', () => {
 
 /* Gate script ------------------------------------------------------------------------------ */
 
-test('a completed-goal attempt is refused when the project gate script fails', () => {
-  const { guard } = harness(project(), { runScript: () => ({ status: 1, output: 'visual gate FAILED' }) });
+test('a completed-goal attempt is refused when the gate check fails, with its rule id', () => {
+  const { guard } = harness(project(PASS_GATE.replace('Verdict: PASS', 'Verdict: FAIL')));
   const session = lead([...shot(T0 + 100_000), ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)]);
   const denial = guard(complete(session));
   assert.equal(denial.info.code, 'VISUAL_GATE_FAILED');
-  assert.match(denial.reason, /tools\/check-visual-gate\.mjs exited 1/);
+  assert.match(denial.reason, /\[VERDICT\] docs\/launch\/VISUAL_GATE\.md: verdict is FAIL/);
   assert.match(denial.reason, /Report "visual gate FAILED"/);
 });
 
-test('the real project script is executed and its exit code decides', () => {
-  const root = project(PASS_GATE.replace('Verdict: PASS', 'Verdict: FAIL'));
+test('one rule source: a different project copy of the script is never run', () => {
+  const root = project();
   mkdirSync(path.join(root, 'tools'));
-  copyFileSync(SCRIPT, path.join(root, 'tools/check-visual-gate.mjs'));
-  const { guard } = harness(root, { runScript: runProjectScript });
-  const denial = guard(complete(lead([...shot(T0 + 100_000), ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)])));
-  assert.match(denial.reason, /verdict is FAIL/);
-  assert.match(denial.reason, /check-visual-gate\.mjs exited 1/);
+  writeFileSync(path.join(root, 'tools/check-visual-gate.mjs'), 'console.log("old rules"); process.exit(1);');
+  const { guard } = harness(root);
+  assert.equal(guard(complete(lead([...shot(T0 + 100_000), ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)]))), undefined,
+    'the bundled rules decide; an outdated project script cannot disagree');
+});
+
+test('roblox_visual_gate reports the same problems as completion, with the rule table and watched paths', () => {
+  const root = project(PASS_GATE.replace('Verdict: PASS', 'Verdict: FAIL'));
+  const ctx = { get: key => (key === 'workingDirectory' ? { get: () => root } : undefined) };
+  const visual = createVisualGuard({ ctx, brain, evidence: { rows: () => [] }, collect: async () => ({ captures: [] }) });
+  let tool;
+  ctx.tools = { register: definition => { tool = definition; return () => {}; } };
+  registerVisualGateTool(ctx, visual);
+  const value = tool.execute({}, { agent: { id: 'lead', session: lead([]) } });
+  assert.equal(value.ok, false);
+  assert.deepEqual([...new Set(value.problems.map(item => item.rule))].sort(), ['LEAD_LOOKED', 'REVIEWER_DISPATCHED', 'REVIEW_AFTER_WORK', 'VERDICT']);
+  assert.ok(value.rules.STALE && value.rules.LEAD_LOOKED && value.rules.CHECKLIST.includes('5'));
+  assert.deepEqual(value.watch[0].watched, ['src/client']);
+  assert.ok(value.watch[0].ignored.includes('assets/backup/**'));
+  const off = createVisualGuard({ ctx: { get: () => ({ get: () => project(null) }) }, brain });
+  assert.equal(off.report(lead([])), undefined);
+});
+
+test('a backup export or an ignored path does not make the gate stale', () => {
+  const root = project();
+  mkdirSync(path.join(root, 'assets/backup'), { recursive: true });
+  writeFileSync(path.join(root, 'assets/backup/HolidayArt.rbxm'), 'x');
+  writeFileSync(path.join(root, 'assets/Holiday.backup.rbxm'), 'x');
+  const gate = { scope: 'launch', gate: { clientSource: ['src/client', 'assets'] } };
+  const later = (T0 + 120_000) / 1000;
+  utimesSync(path.join(root, 'assets/backup/HolidayArt.rbxm'), later, later);
+  utimesSync(path.join(root, 'assets/Holiday.backup.rbxm'), later, later);
+  const withAssets = PASS_GATE.replace('Client source: src/client', 'Client source: src/client, assets');
+  writeFileSync(path.join(root, 'docs/launch/VISUAL_GATE.md'), withAssets);
+  utimesSync(path.join(root, 'docs/launch/VISUAL_GATE.md'), (T0 + 60_000) / 1000, (T0 + 60_000) / 1000);
+  assert.equal(checkVisualGate(root).ok, true, 'default ignores cover backup exports');
+  writeFileSync(path.join(root, 'assets/Sky.rbxm'), 'x');
+  utimesSync(path.join(root, 'assets/Sky.rbxm'), later, later);
+  assert.match(checkVisualGate(root).gates[0].problems[0].text, /^assets\/Sky\.rbxm changed .* after the gate file/);
+  writeFileSync(path.join(root, 'docs/launch/VISUAL_GATE.md'), `${withAssets}Ignore: assets/Sky.rbxm\n`);
+  utimesSync(path.join(root, 'docs/launch/VISUAL_GATE.md'), (T0 + 60_000) / 1000, (T0 + 60_000) / 1000);
+  assert.equal(checkVisualGate(root).ok, false, 'an explicit Ignore: line replaces the defaults, so the backup counts again');
+  assert.equal(gate.scope, 'launch');
+});
+
+test('the gate script prints its rule table', () => {
+  const out = spawnSync(process.execPath, [SCRIPT, '--rules'], { encoding: 'utf8' });
+  assert.equal(out.status, 0);
+  assert.match(out.stdout, /^CHECKLIST\s+a checklist of at least 5/m);
+  assert.match(out.stdout, /Ignored by default .*assets\/backup\/\*\*/);
 });
 
 test('check-visual-gate.mjs exits 1 on each missing requirement and 0 on a complete gate', () => {
@@ -172,7 +218,7 @@ test('check-visual-gate.mjs exits 1 on each missing requirement and 0 on a compl
   }
   const stale = run(project(PASS_GATE, { gateTime: T0, clientTime: T0 + 60_000 }));
   assert.equal(stale.status, 1);
-  assert.match(stale.stdout, /stale: src\/client\/Menu\.luau changed after the gate file/);
+  assert.match(stale.stdout, /\[STALE\] src\/client\/Menu\.luau changed .* after the gate file/);
   assert.equal(run(project(null)).status, 1, 'no gate file at all');
 });
 
@@ -191,7 +237,7 @@ test('visual work cannot be accepted without a visual review dispatched after it
   const { guard } = harness(project());
   const impl = 'Role: implementer/standard\nBuild the main menu GUI in src/client.';
   const session = lead([...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE), ...dispatch('impl', impl, IMPL_ROUTE), ...shot(T0 + 100_000)]);
-  assert.match(guard(complete(session)).reason, /no visual\/standard or visual\/expert review with screenshot paths was dispatched after the last visual work/);
+  assert.match(guard(complete(session)).reason, /no visual\/standard or visual\/expert review with capture ids was dispatched after the last visual work/);
   const reviewed = lead([...session.events, ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)]);
   assert.equal(guard(complete(reviewed)), undefined);
 });
@@ -250,7 +296,7 @@ test('primitive final art needs 6 queries, viewed candidates and real rejection 
   const write = text => {
     mkdirSync(path.join(root, 'docs/x'), { recursive: true });
     writeFileSync(path.join(root, 'docs/x/VISUAL_GATE.md'), text);
-    return checkVisualGate(root).gates[0].problems.join('\n');
+    return checkVisualGate(root).gates[0].problems.map(item => item.text).join('\n');
   };
   const thin = write(assetGate('### Piece: tree\nFinal: primitive\nQueries: "tree"; "pine"'));
   assert.match(thin, /at least 6 distinct search_assets queries \(found 2\)/);
@@ -301,11 +347,44 @@ test('assets are never inserted during a playtest', () => {
 
 /* Report honesty and dispatch announcements ------------------------------------------------ */
 
-test('a status report while the gate fails must open with "visual gate FAILED"', () => {
-  const gate = { ok: false, problems: ['verdict is FAIL'] };
-  const [fix] = replyCorrections({ reply: 'Status: the menu is done and looks good.', gate });
+test('a visual status report while the gate fails must open with "visual gate FAILED"', () => {
+  const gate = { ok: false, problems: [{ rule: 'VERDICT', text: 'verdict is FAIL' }] };
+  const [fix] = replyCorrections({ reply: 'Status: impl-ui finished the HUD pass.', gate, visualTurn: true });
   assert.match(fix, /Open the report with "visual gate FAILED"/);
-  assert.deepEqual(replyCorrections({ reply: 'visual gate FAILED: verdict is FAIL.\nStatus: fixing the HUD.', gate }), []);
+  assert.match(fix, /\[VERDICT\] verdict is FAIL/);
+  assert.deepEqual(replyCorrections({ reply: 'visual gate FAILED: verdict is FAIL.\nStatus: fixing the HUD.', gate, visualTurn: true }), []);
+  const [claim] = replyCorrections({ reply: 'The menu is done and looks good.', gate });
+  assert.match(claim, /visual gate FAILED/, 'a visual claim needs the opening even on a quiet turn');
+});
+
+test('unrelated questions are not forced to open with the gate state', async () => {
+  const gate = { ok: false, problems: [{ rule: 'VERDICT', text: 'verdict is FAIL' }] };
+  assert.deepEqual(replyCorrections({ reply: 'The licence is MIT. Summary: you may reuse the code with attribution.', gate }), []);
+  const root = project(PASS_GATE.replace('Verdict: PASS', 'Verdict: FAIL'));
+  const { turnStopping } = harness(root);
+  const steered = [];
+  const events = [
+    { type: 'turn/start', data: { turn: 1 } },
+    { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'what licence is the brain under?' }] } },
+    ...callAndResult('read', { file_path: 'LICENSE' }, [{ type: 'text', text: 'MIT' }]),
+    { type: 'assistant/message', data: { turn: 1, message: { content: [{ type: 'text', text: 'Result: it is MIT licensed.' }] } } },
+  ];
+  await turnStopping({ agent: { id: 'lead', session: lead(events), steer: message => steered.push(message) }, turn: 1 });
+  assert.equal(steered.length, 0);
+  const visualEvents = [...events.slice(0, 1), ...shot(T0 + 5000), events.at(-1)];
+  await turnStopping({ agent: { id: 'lead2', session: { ...lead(visualEvents), id: 'lead2' }, steer: message => steered.push(message) }, turn: 1 });
+  assert.equal(steered.length, 1, 'a turn that captured a screenshot is a visual turn');
+});
+
+test('suspicious captures (256x256 or a fallback) do not count as looking', () => {
+  const { guard } = harness(project());
+  const tiny = callAndResult('mcp__robloxstudio__capture_screenshot', {}, [{ type: 'text', text: '{}' }, ...tinyImage], { time: T0 + 100_000 });
+  const fallback = callAndResult('mcp__robloxstudio__capture_screenshot', {},
+    [{ type: 'text', text: '{"studioFastPathUnavailable":true}' }, ...image], { time: T0 + 100_000 });
+  for (const capture of [tiny, fallback]) {
+    const denial = guard(complete(lead([...capture, ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)])));
+    assert.match(denial.reason, /\[LEAD_LOOKED\] every screenshot you viewed was flagged suspicious/);
+  }
 });
 
 test('visuals cannot be called done on a worker rating without a fresh look', () => {
@@ -335,6 +414,11 @@ test('the coordinator turn is steered once when its reply breaks the rules', asy
   await turnStopping({ agent, turn: 1 });
   assert.equal(steered.length, 1);
   assert.match(steered[0].content[0].text, /claude-sonnet-5-5 at high/);
+  // Regression: 1.4.x steered without role/id, and the stored user/message made the session
+  // log fail replay validation ("message must have role \"user\"").
+  assert.equal(steered[0].role, 'user');
+  assert.match(steered[0].id, /^[0-9a-f-]{36}$/);
+  assert.ok(Object.isFrozen(steered[0]));
   await turnStopping({ agent, turn: 1 });
   assert.equal(steered.length, 1, 'never loops');
 });

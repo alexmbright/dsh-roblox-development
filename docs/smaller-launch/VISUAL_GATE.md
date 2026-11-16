@@ -1,11 +1,14 @@
 # Visual gate: smaller-launch
 
-Written by the visual reviewer worker only. The coordinator never edits this file; `tools/check-visual-gate.mjs` reads it.
+Written by the visual reviewer worker only. The coordinator never edits this file. Roblox mode checks it with its bundled `tools/check-visual-gate.mjs` (the single rule source; `--rules` prints every rule) and `roblox_visual_gate` shows the result.
+
+Rules: `Verdict: PASS`; a `Reviewer:` that is a visual/standard or visual/expert worker the lead dispatched; at least 3 screenshots (capture ids from `roblox_screenshots`); a checklist of at least 5 items, all checked for PASS; this file newer than every watched file. `Client source:` lists the watched folders; `Ignore:` lists globs that never count as a visual change and replaces the defaults shown here.
 
 Verdict: FAIL
 Reviewer: <worker name> (visual/standard)
 Reviewed: YYYY-MM-DD
 Client source: src/client, src/StarterGui, src/StarterPlayer, src/ReplicatedFirst, assets
+Ignore: assets/backup/**, **/*.backup.rbxm, **/*.backup.rbxmx, **/backup/**
 
 Screenshots:
 - cap-1a2b3c4d5e main menu, desktop

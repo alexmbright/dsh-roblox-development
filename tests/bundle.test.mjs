@@ -169,7 +169,7 @@ test('distribution list covers every authored resource and only intended runtime
   const patterns = manifest.files.map(p => new RegExp('^' + p.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'));
   for (const file of await walk()) {
     assert.ok(file === 'package.json' || file.startsWith('vendor/') || file.startsWith('toolchain/') || patterns.some(p => p.test(file)), `unlisted: ${file}`);
-    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'skill-policy.js', 'visual-policy.js', 'screenshots.js', 'tools/check-visual-gate.mjs', 'coordination.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
+    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'skill-policy.js', 'visual-policy.js', 'screenshots.js', 'screenshot-bridge.js', 'studio-ids.js', 'http-bridge.js', 'tools/check-visual-gate.mjs', 'coordination.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
   }
   assert.match(await text('THIRD-PARTY-NOTICES.md'), /Copyright \(c\) 2026 TabooHarmony/);
 });

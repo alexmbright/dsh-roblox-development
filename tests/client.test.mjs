@@ -124,3 +124,27 @@ test('the effort picker keeps an unsupported saved effort visible and disables u
   assert.deepEqual(labels, ['low', 'high', 'xhigh (not supported)']);
   assert.equal(pickers[1].props.disabled, true, 'no model chosen, so no effort to pick');
 });
+
+test('the client registers a Roblox screenshots tab in the right sidebar when it exists', () => {
+  const plugin = loaded[0].factory(name => (name === 'react' ? React : undefined));
+  const types = [];
+  const seats = [];
+  const slots = {
+    inject: (slot, cb) => { seats.push(slot); cb?.(); },
+    register: (options, component) => { seats.push({ ...options, component }); return () => {}; },
+  };
+  const tabsCtx = {
+    slots,
+    sidebarRightTabs: { register: definition => { types.push(definition); return () => {}; } },
+    effect: fn => fn(),
+  };
+  plugin.apply({ slots, inject: (deps, cb) => { assert.deepEqual(deps, ['sidebarRightTabs']); cb(tabsCtx); } });
+  assert.equal(types.length, 1);
+  assert.equal(types[0].kind, 'roblox-screenshots');
+  assert.equal(types[0].guide[0].title(), 'Roblox screenshots');
+  const body = seats.find(seat => seat?.name === 'sidebar.right.pane.tab');
+  assert.equal(body.key, types[0].id);
+  assert.deepEqual(body.inject('session-1'), { sessionId: 'session-1' });
+  assert.ok(seats.some(seat => seat?.name === 'sidebar.right.pane.tab.title' && seat.key === types[0].id));
+  assert.doesNotThrow(() => plugin.apply({ slots }), 'compositions without a right sidebar still mount');
+});

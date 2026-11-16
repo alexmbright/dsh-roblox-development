@@ -40,3 +40,11 @@ export function statusContext(view, routes = new Map()) {
     + 'or "Waiting on: nothing". Announce each finished worker by name with its outcome before using its results.');
   return lines.join('\n');
 }
+
+/**
+ * Join the worker status and the one-line visual gate status. The gate line changes only when a
+ * gate rule's pass/fail set changes, so it is as cache-friendly as the worker status.
+ */
+export function promptContext(status, gateLine = '') {
+  return [status, gateLine].filter(part => typeof part === 'string' && part !== '').join('\n');
+}

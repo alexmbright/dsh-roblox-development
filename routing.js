@@ -18,14 +18,17 @@
  * @module @alexturbo/dsh-roblox-development/routing
  */
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, isSkillGated, sessionState, parseRole, baseToolName } from './skill-policy.js';
 import { statusContext } from './coordination.js';
 import {
   projectRoot, gateEnabled, dispatchDenial, gateFileEditDenial, playtestInsertDenial, completionDenial,
-  evaluateGate, lastVisualChange, finalReply, replyCorrections,
+  evaluateGate, gateReport, gateStatusLine, allRules, finalReply, replyCorrections,
 } from './visual-policy.js';
-import { registerScreenshotTool, collectTree } from './screenshots.js';
+import { registerScreenshotTool, collectTree, storeTextOnlyCaptures } from './screenshots.js';
+import { crossNamespaceDenial } from './studio-ids.js';
+import { promptContext } from './coordination.js';
 
 export const inject = ['tools'];
 
@@ -237,20 +240,59 @@ export function blockingWaitDenial(execution) {
   };
 }
 
+/**
+ * The steering message for one correction. It must be a complete user-role message: the session
+ * log stores it as-is and replay validation rejects a user/message without `role: "user"`, which
+ * makes the whole session unreadable. Mirrors `createUserMessage` from @deepseek-ai/dsh-llm
+ * (fresh id, role, frozen), which a linked checkout cannot import.
+ */
+export function correctionMessage(corrections) {
+  return Object.freeze({
+    role: 'user',
+    id: randomUUID(),
+    content: Object.freeze([Object.freeze({ type: 'text', text: `Roblox mode: before ending this turn, send a corrected reply.\n- ${corrections.join('\n- ')}` })]),
+    source: Object.freeze({ kind: 'roblox-visual-gate' }),
+  });
+}
+
 /** Tools the visual gate decides; everything else skips its filesystem checks. */
 const VISUAL_GATED = new Set(['subagent', 'edit', 'write', 'apply_patch', 'update_goal', 'insert_asset', 'generate_model']);
+/** Tool calls that make a coordinator turn a visual one for the reporting rule. */
+const VISUAL_TURN_TOOLS = new Set(['screen_capture', 'capture_screenshot', 'capture_device_matrix', 'insert_asset', 'generate_model',
+  'roblox_screenshots', 'roblox_visual_gate']);
+
+/** Whether this turn of the lead's log touched visual work. */
+export function visualTurnOf(session, turn, gatePaths = []) {
+  const count = typeof session?.seq === 'number' ? session.seq : session?.events?.length ?? 0;
+  const at = seq => (typeof session?.eventAt === 'function' ? session.eventAt(seq) : session?.events?.[seq]);
+  for (let seq = count - 1; seq >= 0; seq -= 1) {
+    const event = at(seq);
+    if (event?.type === 'turn/start' && event.data?.turn === turn) break;
+    const data = event?.data;
+    if (event?.type === 'tool/call') {
+      const name = baseToolName(data?.name);
+      if (VISUAL_TURN_TOOLS.has(name) || name === 'subagent' || name === 'send_message') return true;
+      if ((name === 'edit' || name === 'write') && gatePaths.some(file => String(data?.arguments ?? '').includes(file))) return true;
+    }
+    // A worker finishing (its completion notice lands as an agent message) is visual reporting time.
+    if (event?.type === 'user/message' && data?.source?.kind === 'agent-message') return true;
+  }
+  return false;
+}
 
 /**
- * Build the visual-gate guard and the coordinator reply check.
+ * Build the visual-gate guard, the coordinator reply check and the gate status line.
  * @param options.ctx - registrant context (workingDirectory, goals).
  * @param options.brain - pinned brain, for the folded session state.
  * @param options.evidence - worker evidence store.
  * @param options.roleRoutes - `(role, tier) => routes[] | undefined`.
  * @param options.mode - `auto` (marker file), `on` or `off`.
- * @param options.runScript - project gate script runner (test seam).
+ * @param options.previews - `on` reminds the lead once per turn to show new worker screenshots.
+ * @param options.collect - capture collector (test seam).
  */
-export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode = 'auto', runScript,
+export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode = 'auto',
   previews = 'on', collect = collectTree }) {
+  const workersOf = session => evidence?.rows(session.id) ?? [];
   const guard = execution => {
     const name = baseToolName(execution?.name);
     if (!VISUAL_GATED.has(name)) return undefined;
@@ -274,11 +316,16 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
       try {
         objective = ctx.get('goals')?.get?.(execution.agent)?.objective;
       } catch { /* no goal service: nothing to judge */ }
-      const leadId = session.id ?? execution.agent.id;
-      const workers = evidence?.rows(leadId) ?? [];
-      return completionDenial({ root, objective, lead: state, workers, runScript });
+      return completionDenial({ root, objective, lead: state, workers: workersOf(session) });
     }
     return undefined;
+  };
+
+  /** The lead's full gate report (file rules plus runtime rules), or undefined when the gate is off. */
+  const report = session => {
+    const root = projectRoot(ctx, session);
+    if (!gateEnabled(root, mode)) return undefined;
+    return gateReport({ root, lead: sessionState(session, brain), workers: workersOf(session) });
   };
 
   const corrected = new Set();
@@ -295,7 +342,7 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
     const newest = captures.reduce((latest, capture) => Math.max(latest, capture.time), since ?? 0);
     shownUntil.set(leadId, newest);
     if (since === undefined) return [];
-    return captures.filter(capture => capture.time > since).map(capture => capture.id);
+    return captures.filter(capture => capture.time > since && capture.suspicious !== true).map(capture => capture.id);
   };
   const turnStopping = async ({ agent, turn, signal }) => {
     const session = agent?.session;
@@ -305,26 +352,67 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
     const newCaptures = await newCapturesFor(agent, session.id ?? agent.id, signal);
     const state = sessionState(session, brain);
     const dispatched = state.dispatchLog.filter(entry => entry.turn === turn);
-    const root = projectRoot(ctx, session);
+    const full = report(session);
     let gate;
     let lookedSinceChange = true;
-    if (gateEnabled(root, mode)) {
-      gate = evaluateGate(root, { runScript: () => undefined });
-      const change = lastVisualChange(root, gate.gates, state.assets.changes);
-      const lastShot = state.screenshots.reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
-      lookedSinceChange = lastShot > change.time;
+    let visualTurn = false;
+    if (full !== undefined) {
+      gate = full.gate;
+      const lastShot = state.screenshots.filter(shot => shot.suspicious !== true).reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
+      lookedSinceChange = lastShot > full.change.time;
+      visualTurn = newCaptures.length > 0 || visualTurnOf(session, turn, gate.gates.map(item => path.join('docs', item.scope, 'VISUAL_GATE.md')));
     }
     if (dispatched.length === 0 && gate === undefined && newCaptures.length === 0) return;
-    const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, lookedSinceChange, newCaptures });
+    const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, visualTurn, lookedSinceChange, newCaptures });
     if (corrections.length === 0 || typeof agent.steer !== 'function') return;
     corrected.add(key);
-    agent.steer({
-      content: [{ type: 'text', text: `Roblox mode: before ending this turn, send a corrected reply.\n- ${corrections.join('\n- ')}` }],
-      source: { kind: 'roblox-visual-gate' },
-    });
+    agent.steer(correctionMessage(corrections));
   };
-  return { guard, turnStopping };
+
+  /** One-line status for the lead's prompt context ('' when the gate is off or for workers). */
+  const statusLine = session => {
+    if (session === undefined || session?.header?.origin === 'subagent') return '';
+    const root = projectRoot(ctx, session);
+    if (!gateEnabled(root, mode)) return '';
+    return gateStatusLine(evaluateGate(root));
+  };
+  return { guard, turnStopping, report, statusLine };
 }
+
+/**
+ * Register `roblox_visual_gate`: the same check goal completion runs, with every rule.
+ * @param visual - from {@link createVisualGuard}.
+ */
+export function registerVisualGateTool(ctx, visual) {
+  if (typeof ctx.tools?.register !== 'function') return undefined;
+  return ctx.tools.register({
+    name: 'roblox_visual_gate',
+    description: 'Run the Roblox visual gate exactly as goal completion does and list every problem with its rule id, plus the full '
+      + 'rule table and the watched/ignored paths. Use it before reporting on visual work and before completing a visual goal.',
+    parameters: { type: 'object', additionalProperties: false, properties: {} },
+    output: {
+      schema: { type: 'object' },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    isConcurrencySafe: () => true,
+    execute(_args, exec) {
+      const session = exec?.agent?.session;
+      const full = session === undefined ? undefined : visual.report(session);
+      if (full === undefined) {
+        return { enabled: false, note: 'No docs/<scope>/VISUAL_GATE.md in this project and visualGate is not "on": the gate does not apply.' };
+      }
+      return {
+        enabled: true,
+        ok: full.ok,
+        problems: full.problems.map(item => ({ rule: item.rule, text: item.text })),
+        lastWatchedChange: full.change.time > 0 ? { path: full.change.what, at: new Date(full.change.time).toISOString() } : null,
+        watch: full.gate.gates.map(item => ({ scope: item.scope, watched: item.watch?.watched ?? [], ignored: item.watch?.ignored ?? [] })),
+        rules: allRules(),
+      };
+    },
+  });
+}
+
 
 export function apply(ctx, config) {
   const service = () => ctx.get('robloxRouting');
@@ -422,6 +510,8 @@ export function apply(ctx, config) {
     const previews = config?.screenshotPreviews === 'off' ? 'off' : 'on';
     visual = createVisualGuard({ ctx, brain, evidence, roleRoutes, mode, previews });
   }
+  // Captures by a model without image input are stored and shared instead of dropped.
+  const offCaptures = ctx.on?.('tools/post-execute', storeTextOnlyCaptures(ctx));
   const offTurn = visual === undefined ? undefined : ctx.on?.('agent/turn-stopping', async payload => {
     try {
       await visual.turnStopping(payload);
@@ -434,6 +524,14 @@ export function apply(ctx, config) {
     // A coordinator must not park the turn waiting on workers.
     const blocking = blockingWaitDenial(execution);
     if (blocking !== undefined) return blocking;
+
+    // The two Studio servers' target ids are separate namespaces.
+    try {
+      const crossed = crossNamespaceDenial(execution);
+      if (crossed !== undefined) return crossed;
+    } catch (error) {
+      console.warn(`[roblox-studio-ids] check skipped: ${error?.message ?? error}`);
+    }
 
     // The guard runs on every tool call in this scope; a policy failure must never surface as
     // a thrown tool error, so it degrades to "no routing opinion" with a warning.
@@ -522,6 +620,14 @@ export function apply(ctx, config) {
   } catch (error) {
     console.warn(`[roblox-screenshots] roblox_screenshots unavailable: ${error?.message ?? error}`);
   }
+  let removeGateTool;
+  if (visual !== undefined) {
+    try {
+      removeGateTool = registerVisualGateTool(ctx, visual);
+    } catch (error) {
+      console.warn(`[roblox-visual-gate] roblox_visual_gate unavailable: ${error?.message ?? error}`);
+    }
+  }
 
   // Worker lifecycle feeds both the acceptance evidence and the coordinator status context.
   // Evidence is captured at settlement because the worker's live handle is disposed around then.
@@ -550,7 +656,11 @@ export function apply(ctx, config) {
           try {
             for (const entry of sessionState(session, brain).dispatchLog) if (entry.name) routes.set(entry.name, entry);
           } catch { /* status without routes */ }
-          return statusContext(evidence.view(session.id ?? agent.id), routes);
+          let gateLine = '';
+          try {
+            gateLine = visual?.statusLine(session) ?? '';
+          } catch { /* status without the gate line */ }
+          return promptContext(statusContext(evidence.view(session.id ?? agent.id), routes), gateLine);
         },
       });
     } catch (error) {
@@ -562,6 +672,8 @@ export function apply(ctx, config) {
   return () => {
     off?.();
     offTurn?.();
+    offCaptures?.();
+    removeGateTool?.();
     for (const disposeWorker of offWorkers) disposeWorker();
     dropStatus?.();
     removeAudit?.();

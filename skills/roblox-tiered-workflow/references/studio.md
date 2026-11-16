@@ -4,7 +4,19 @@
 
 The Roblox preset declares two scoped built-in MCP clients: official Roblox Studio via its platform-selected Windows batch launcher or macOS StudioMCP executable, and Chrrxs via `npx -y @chrrxs/robloxstudio-mcp@latest --auto-install-plugin`. Automatic reconnect is disabled; diagnose connection failures before deliberately reconnecting. Plugin updates may require a full Studio restart.
 
-Discover the connected server and exact tool schemas before use. Official tools identify targets with `studio_id`; Chrrxs uses `instance_id`. Resolve the intended target independently through each backend and confirm they refer to the intended experience/place. An identifier from one namespace is not evidence for the other.
+Discover the connected server and exact tool schemas before use. Official tools identify targets with `studio_id`; Chrrxs uses `instance_id`. Resolve the intended target independently through each backend and confirm they refer to the intended experience/place. An identifier from one namespace is not evidence for the other; the runtime refuses an id listed by the other server.
+
+| Task | Preferred server | Why |
+|---|---|---|
+| Viewport evidence for review | official `screen_capture` | The viewport as Studio renders it |
+| Phone/tablet/desktop sweeps | chrrxs `capture_device_matrix` | Only chrrxs |
+| Asset search, thumbnails, details, preview, insert | chrrxs | Only chrrxs has details and thumbnails |
+| Playtests (solo, multiplayer, add players) | chrrxs | Wider lifecycle control |
+| Runtime eval, profiling, simulated input | chrrxs | Only chrrxs |
+| Studio list, script read/multi-edit, console output, start/stop play | official | Native tools |
+| `execute_luau` | either | Name the server and pass its own id |
+
+A capture of 256×256 or smaller, or one that reports `studioFastPathUnavailable`, is marked suspicious in `roblox_screenshots`: probably not the real viewport, so it does not count for the visual gate. Capture again with the official `screen_capture`.
 
 ## One operator, explicit handoff
 

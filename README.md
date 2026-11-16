@@ -85,7 +85,20 @@ The official client uses Windows `%LOCALAPPDATA%/Roblox/mcp.bat` through `cmd.ex
 
 The Chrrxs bridge launches the pinned `@chrrxs/robloxstudio-mcp` dependency through DSH's packaged runtime with `--auto-install-plugin`, and may install or update its Studio plugin — review that trust choice before selecting the mode, and restart Studio when required. System Node/npm/npx is not used for either bridge.
 
-Enable native Script Sync for the project. Official `studio_id` and Chrrxs `instance_id` are distinct namespaces: resolve each independently, and one operator coordinates both through messages.
+Enable native Script Sync for the project. Official `studio_id` and Chrrxs `instance_id` are distinct namespaces: resolve each independently, and one operator coordinates both through messages. The runtime refuses a call that passes an id listed by the other server, or the other server's argument name.
+
+Both servers stay connected because each has features the other lacks:
+
+| Task | Preferred server |
+|---|---|
+| Viewport evidence for review | official `screen_capture` |
+| Phone/tablet/desktop sweeps | chrrxs `capture_device_matrix` |
+| Asset search, thumbnails, details, preview, insert | chrrxs |
+| Playtests, runtime eval, profiling, simulated input | chrrxs |
+| Studio list, script read/multi-edit, console output, start/stop play | official |
+| `execute_luau` | either: name the server and pass its own id |
+
+A capture of 256×256 or smaller, or one reporting `studioFastPathUnavailable`, is marked **suspicious**: probably not the real viewport, so it does not count for the visual gate.
 
 ### Structured results
 
@@ -103,7 +116,7 @@ The upstream bridge uses one primary on its default port; additional servers ent
 
 ## Workspace and permissions
 
-Routine work belongs in **workspace-write**; the preset rejects automatic `danger-full-access` shell retries instead of looping on approval prompts. This makes unsupported operations fail loudly rather than silently escalating — it does not turn them into successes.
+Routine work belongs in **workspace-write**; the preset rejects automatic `danger-full-access` shell retries instead of looping on approval prompts. This makes unsupported operations fail loudly rather than silently escalating — it does not turn them into successes. Agents change source with the `edit` and `write` tools rather than shell scripts, keep scratch files in the gitignored `.dsh/roblox/tmp/`, and read bundle files with `read`.
 
 The scoped shell redirects home, config, cache and temp state into `<workspace>/.dsh/roblox`: npm and Python caches, tool temp, and the Lua toolchain's writable state. Add `.dsh/roblox/` to the game's local ignore rules rather than committing caches.
 
@@ -123,6 +136,10 @@ Studio captures are shared by id instead of saved as files. Every `screen_captur
 
 The lead keeps you looking along with it: when workers have captured something new, it shows the previews that matter in its reply with a one-line caption. If it ends a turn without doing so, it is reminded once and may answer "no new screenshots worth showing". Set `screenshotPreviews: 'off'` on the `roblox-routing-guard` row to stop the reminder.
 
+**Roblox screenshots tab.** Open it from the right sidebar's guide page. It shows every capture from the Session's lead and all its workers, newest first, refreshing while visible: thumbnails, who took each, device label, time, size and the copyable `cap-` id. Click a thumbnail to enlarge it; filter by agent or hide suspicious captures. Images are served same-origin from DSH's own attachment store; nothing is written to the project.
+
+**Text-only models.** DSH only stores a tool's image when the calling model accepts images. When a text-only worker captures, the bundle stores the image itself and gives the model the capture id as text, so the capture is still shared with reviewers, QA and the sidebar.
+
 ### Visual quality gate
 
 Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` (copy [the template](docs/smaller-launch/VISUAL_GATE.md)), or when the `roblox-routing-guard` config sets `visualGate: on` (`off` disables it). When active, the runtime refuses:
@@ -131,15 +148,19 @@ Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` 
 - a `visual/*` review without a capture id or image path, without `Verdict: PASS|FAIL` and a checklist, or without naming the gate file;
 - writes to `VISUAL_GATE.md` by anyone except the visual worker;
 - worker prompts that touch Creator Store assets without the sourcing rule, and `insert_asset`/`generate_model` during a playtest;
-- `update_goal complete` on a visual objective (UI, art, scene, layout, looks…) unless the coordinator viewed a screenshot (`screen_capture`, `capture_screenshot`, `capture_device_matrix`, `roblox_screenshots` view, or `read_image` on a captured file) taken after the last client-source or asset change, a visual/standard or visual/expert review was dispatched after the last visual work, the gate passes [tools/check-visual-gate.mjs](tools/check-visual-gate.mjs) (bundled copy and the project's own copy, if any) with the coordinator's own visual worker as reviewer (who must itself have viewed a screenshot), and the asset-sourcing record matches the `search_assets`, `get_asset_thumbnail` and `get_asset_details` calls in the session logs.
+- `update_goal complete` on a visual objective (UI, art, scene, layout, looks…) unless the coordinator viewed a usable (not suspicious) screenshot taken after the last watched or asset change, a visual/standard or visual/expert review was dispatched after the last visual work, the gate passes with the coordinator's own visual worker as reviewer (who must itself have viewed a screenshot), and the asset-sourcing record matches the `search_assets`, `get_asset_thumbnail` and `get_asset_details` calls in the session logs.
 
-The check script exits 1 unless the gate has `Verdict: PASS`, a named visual reviewer, at least 3 screenshots, a fully checked checklist, a modified time newer than the newest file under the client source folders, and, for each art piece, 6+ queries, viewed candidates and real rejection reasons (scripts, triangles and pivots are fixable). While it fails, a status report that does not open with `visual gate FAILED`, or a "done/good/ready" claim about visuals without a fresh look, is sent back once for correction.
+**One rule source.** The bundled [tools/check-visual-gate.mjs](tools/check-visual-gate.mjs) holds every file rule; the runtime never runs a different project copy. `node tools/check-visual-gate.mjs --rules` prints the rule table, and `roblox_visual_gate` runs exactly what goal completion runs, listing each problem with its rule id (`VERDICT`, `STALE`, `LEAD_LOOKED`, …), the watched and ignored paths, and the time of the last watched change. The script exits 1 unless the gate has `Verdict: PASS`, a named visual reviewer, at least 3 screenshots, a checklist of at least 5 items all checked, a modified time newer than every watched file, and, for each art piece, 6+ queries, viewed candidates and real rejection reasons (scripts, triangles and pivots are fixable).
+
+**What counts as a change.** The gate's `Client source:` line lists the watched folders (default `src/client`, `src/StarterGui`, `src/StarterPlayer`, `src/ReplicatedFirst`, `assets`). `Ignore:` lists globs that never count and replaces the defaults (`assets/backup/**`, `**/*.backup.rbxm`, `**/*.backup.rbxmx`, `**/backup/**`). Lock, temp and `.DS_Store` files never count.
+
+**Reporting.** The lead sees a one-line gate status in its prompt. When it reports on visual work (a worker dispatched or finished, a capture, an asset insertion or a gate edit that turn) or claims visuals are done/good/ready while the gate fails, a reply that does not open with `visual gate FAILED` is sent back once. Unrelated questions are not.
 
 Routes are advisory planning policy, not a runtime router, availability guarantee or fixed roster: discover what is available before dispatch and adapt explicitly when a route is unavailable. Quota or outage is capacity evidence, never proof of inadequate reasoning.
 
 ## Verification limits
 
-The suite (268 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
+The suite (281 tests) covers packaging, routing state, tool execution, platform pins and install/updater behaviour against local fixtures. It does **not** establish live Studio connectivity, connected game behaviour, or spawn behaviour on macOS. Windows local installation has been exercised; macOS path handling is covered synthetically and needs a live smoke test. Never publish a game as an installation test.
 
 ## Development
 
@@ -157,6 +178,7 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.0** — Roblox screenshots sidebar tab; captures by text-only models stored and shared; suspicious-capture flag; Studio id namespace guard and backend table; one gate rule source with rule ids, `roblox_visual_gate`, `Ignore:` paths and default backup ignores; gate reporting only on visual turns.
 - **1.4.1** — `roblox_screenshots`: captures shared by id across the worker tree (list, view, selective export) with no files written; the lead shows new worker screenshots as previews; visual reviews accept capture ids.
 - **1.4.0** — opt-in visual quality gate (screenshot-before-accept, visual reviewer requirement, `tools/check-visual-gate.mjs`, asset-sourcing effort floor, report honesty); dispatches announced with model and effort.
 - **1.3.1** — per-tier reasoning effort picker in the routing panel.

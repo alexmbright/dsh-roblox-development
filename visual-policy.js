@@ -8,27 +8,22 @@
  * Deny-only `tools.guard` decisions, plus one `agent/turn-stopping` check that keeps the
  * coordinator's turn open (once) when its reply breaks the reporting rules:
  * - Dispatch: every worker assignment states `Role: <role>/<tier>` matching its route. A
- *   `visual/*` reviewer assignment must reference a screenshot or image path, require
+ *   `visual/*` reviewer assignment must reference a capture id or image path, require
  *   `Verdict: PASS|FAIL` with a checklist, and name the VISUAL_GATE.md it records into. An
  *   assignment that touches Creator Store assets must carry the asset-sourcing rule.
  * - Gate file: only a visual worker may write VISUAL_GATE.md.
  * - Playtest: `insert_asset` / `generate_model` are refused while that session runs a playtest.
- * - Completion: `update_goal complete` on a visual objective needs a screenshot the coordinator
- *   viewed after the last client/asset change, a visual/standard|expert review dispatched after
- *   the last visual work, a passing gate (bundled check plus the project's own script) whose
- *   reviewer is one of this coordinator's visual workers, and asset evidence that matches the
- *   tool calls actually made in the worker logs.
+ * - Completion: `update_goal complete` on a visual objective needs a usable screenshot the
+ *   coordinator viewed after the last client/asset change, a visual/standard|expert review
+ *   dispatched after the last visual work, a passing gate (tools/check-visual-gate.mjs, the single
+ *   rule source) whose reviewer is one of this coordinator's visual workers and viewed a
+ *   screenshot, and asset evidence that matches the tool calls actually made in the session logs.
  * @module @alexturbo/dsh-roblox-development/visual-policy
  */
-import { existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { checkVisualGate, gateScopes, latestChange, DEFAULT_CLIENT_SOURCE, GATE_FILE } from './tools/check-visual-gate.mjs';
+import { checkVisualGate, gateScopes, latestChange, watchSpec, GATE_FILE, RULES } from './tools/check-visual-gate.mjs';
 import { baseToolName } from './skill-policy.js';
 import { captureRefs } from './screenshots.js';
-
-/** An assignment carries something to look at: an image path or a shared capture id. */
-const hasVisualRef = text => IMAGE_PATH.test(text) || captureRefs(text).length > 0;
 
 const DENY_NAME = 'roblox-visual-gate';
 const deny = (reason, code) => ({ reason, info: { name: DENY_NAME, code, reason } });
@@ -38,11 +33,13 @@ export const VISUAL_WORK = /\b(?:visuals?|art|ui|gui|hud|layout|scene|lighting|v
 export const ASSET_WORK = /\b(?:creator store|toolbox|insert_asset|search_assets|search_asset|asset id|marketplace asset)\b/i;
 const IMAGE_PATH = /[\w./\\-]+\.(?:png|jpe?g|webp|gif)\b/i;
 const CLAIM = /\b(?:done|good|great|ready|finished|complete|completed|polished|looks? (?:good|great|fine|nice|clean)|ship(?:pable)?|approved|pass(?:es|ed)?)\b/i;
-const STATUS = /\b(?:status|done|complete|completed|finished|ready|shipped|progress|summary|result)\b/i;
 export const ASSET_RULE_TEMPLATE = 'Asset sourcing: run at least 6 varied search_assets queries per piece, get_asset_thumbnail and '
   + 'get_asset_details for every shortlisted candidate; scripts, triangle counts and bad pivots are fixable (insert in Edit mode, '
   + 'strip scripts, rescale), so reject a candidate only after seeing it in the scene, with a reason. Never insert during a playtest. '
   + 'Record queries and candidates in docs/<scope>/VISUAL_GATE.md.';
+
+/** An assignment carries something to look at: an image path or a shared capture id. */
+const hasVisualRef = text => IMAGE_PATH.test(text) || captureRefs(text).length > 0;
 
 /** Project root of a session: the working directory service, else the header cwd. */
 export function projectRoot(ctx, session) {
@@ -61,32 +58,30 @@ export function gateEnabled(root, mode = 'auto') {
   return gateScopes(root).length > 0;
 }
 
-/** Run the project's own tools/check-visual-gate.mjs when it has one. */
-export function runProjectScript(root) {
-  const script = path.join(root, 'tools', 'check-visual-gate.mjs');
-  if (!existsSync(script)) return undefined;
-  const run = spawnSync(process.execPath, [script], {
-    cwd: root, encoding: 'utf8', timeout: 20_000, windowsHide: true,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-  });
-  const output = `${run.stdout ?? ''}${run.stderr ?? ''}`.trim().split(/\r?\n/).slice(-12).join('\n');
-  return { status: run.error ? -1 : run.status ?? -1, output: run.error ? String(run.error.message ?? run.error) : output };
-}
-
-/** Full gate evaluation: bundled checks plus the project's own script. */
-export function evaluateGate(root, { runScript = runProjectScript } = {}) {
+/**
+ * Evaluate the gate with the bundled rules (the only rule source).
+ * @returns `{ ok, problems: [{ rule, text, scope }], gates }`.
+ */
+export function evaluateGate(root) {
   const result = checkVisualGate(root);
-  const problems = result.gates.flatMap(gate => gate.problems.map(problem => (gate.scope ? `docs/${gate.scope}/${GATE_FILE}: ${problem}` : problem)));
-  const script = runScript(root);
-  if (script !== undefined && script.status !== 0) problems.push(`tools/check-visual-gate.mjs exited ${script.status}: ${script.output}`);
-  return { ok: problems.length === 0, problems, gates: result.gates, script };
+  const problems = result.gates.flatMap(gate => gate.problems.map(item => ({
+    ...item, scope: gate.scope, text: gate.scope ? `docs/${gate.scope}/${GATE_FILE}: ${item.text}` : item.text,
+  })));
+  return { ok: problems.length === 0, problems, gates: result.gates };
 }
 
-/** Newest client-source or asset change, in ms. */
+const formatProblem = item => `[${item.rule}] ${item.text}`;
+
+/** Newest watched client-source or asset change, honoring each gate's Client source and Ignore lines. */
 export function lastVisualChange(root, gates, assetChanges = []) {
-  const folders = new Set(DEFAULT_CLIENT_SOURCE);
-  for (const gate of gates ?? []) for (const folder of gate.gate?.clientSource ?? []) folders.add(folder);
-  const disk = root === undefined ? { time: 0 } : latestChange(root, [...folders]);
+  let disk = { time: 0 };
+  if (root !== undefined) {
+    const specs = (gates ?? []).length > 0 ? gates.map(gate => gate.watch ?? watchSpec(gate.gate)) : [watchSpec(undefined)];
+    for (const spec of specs) {
+      const found = latestChange(root, spec.watched, spec.ignored);
+      if (found.time > disk.time) disk = found;
+    }
+  }
   const asset = assetChanges.length > 0 ? Math.max(...assetChanges) : 0;
   return asset > disk.time ? { time: asset, what: 'an asset insertion' } : { time: disk.time, what: disk.path ?? 'client source' };
 }
@@ -131,7 +126,7 @@ export function gateFileEditDenial(filePath, isWorker, role) {
   if (typeof filePath !== 'string' || path.basename(filePath) !== GATE_FILE) return undefined;
   if (isWorker && role?.role === 'visual') return undefined;
   return deny(`Roblox visual gate: only the visual reviewer worker writes ${GATE_FILE}. Dispatch a visual/standard or visual/expert `
-    + 'review with screenshot paths; it records "Verdict: PASS|FAIL", the checklist and the screenshots there.', 'VISUAL_GATE_FILE_OWNED');
+    + 'review with capture ids; it records "Verdict: PASS|FAIL", the checklist and the screenshots there.', 'VISUAL_GATE_FILE_OWNED');
 }
 
 /** Refuse asset insertion while this session runs a playtest. */
@@ -151,14 +146,14 @@ export function assetEvidenceProblems(gates, evidence) {
   for (const gate of gates ?? []) {
     for (const piece of gate.gate?.pieces ?? []) {
       const unlogged = piece.queries.filter(query => !searches.has(query.toLowerCase()));
-      if (unlogged.length > 0) problems.push(`piece "${piece.name}": queries never run with search_assets: ${unlogged.join('; ')}`);
+      if (unlogged.length > 0) problems.push({ rule: 'ASSET_QUERIES', text: `piece "${piece.name}": queries never run with search_assets: ${unlogged.join('; ')}` });
       for (const candidate of piece.candidates) {
         if (candidate.id === undefined) continue;
         if (/^(?:yes|viewed|seen|true)$/i.test(candidate.fields.thumbnail ?? '') && !thumbnails.has(candidate.id)) {
-          problems.push(`piece "${piece.name}" candidate ${candidate.id}: no get_asset_thumbnail call in any log`);
+          problems.push({ rule: 'ASSET_THUMBNAIL', text: `piece "${piece.name}" candidate ${candidate.id}: no get_asset_thumbnail call in any log` });
         }
         if (/^(?:yes|viewed|read|seen|true)$/i.test(candidate.fields.details ?? '') && !details.has(candidate.id)) {
-          problems.push(`piece "${piece.name}" candidate ${candidate.id}: no get_asset_details call in any log`);
+          problems.push({ rule: 'ASSET_DETAILS', text: `piece "${piece.name}" candidate ${candidate.id}: no get_asset_details call in any log` });
         }
       }
     }
@@ -166,18 +161,25 @@ export function assetEvidenceProblems(gates, evidence) {
   return problems;
 }
 
+/** Runtime-only rules (they need session evidence the file check cannot see). */
+export const RUNTIME_RULES = {
+  LEAD_LOOKED: 'the coordinator viewed a usable screenshot (not flagged suspicious) captured after the last watched change',
+  REVIEW_AFTER_WORK: 'a visual/standard or visual/expert review with capture ids was dispatched after the last visual work',
+  REVIEWER_DISPATCHED: 'the gate reviewer is a visual worker this coordinator dispatched',
+  REVIEWER_LOOKED: 'the gate reviewer itself viewed a screenshot',
+  ASSET_LOGGED: 'claimed queries, thumbnails and details match the asset tool calls in the session logs',
+};
+
 /**
- * Decide `update_goal complete` for a visual objective.
+ * Every problem for a visual completion, file rules first then runtime rules.
  * @param input.root - project root.
- * @param input.objective - current goal objective.
  * @param input.lead - the coordinator's folded session state.
  * @param input.workers - worker audit rows (`{ name, audit }`).
- * @param input.runScript - project script runner (test seam).
+ * @returns `{ ok, problems: [{ rule, text }], gate, change }`.
  */
-export function completionDenial({ root, objective, lead, workers = [], runScript }) {
-  if (typeof objective !== 'string' || !VISUAL_OBJECTIVE.test(objective)) return undefined;
-  const problems = [];
-  const gate = evaluateGate(root, { runScript });
+export function gateReport({ root, lead, workers = [] }) {
+  const gate = evaluateGate(root);
+  const problems = [...gate.problems];
   const evidence = { searches: [...lead.assets.searches], thumbnails: [...lead.assets.thumbnails], details: [...lead.assets.details], changes: [...lead.assets.changes] };
   for (const worker of workers) {
     const assets = worker.audit?.assets;
@@ -188,35 +190,50 @@ export function completionDenial({ root, objective, lead, workers = [], runScrip
     evidence.changes.push(...assets.changes);
   }
   const change = lastVisualChange(root, gate.gates, evidence.changes);
-  const lastShot = lead.screenshots.length > 0 ? Math.max(...lead.screenshots.map(shot => shot.time ?? 0)) : 0;
-  if (lead.screenshots.length === 0) {
-    problems.push('you have not viewed a screenshot yourself this session (screen_capture, capture_screenshot, capture_device_matrix, or read_image on a captured file)');
+  const usable = lead.screenshots.filter(shot => shot.suspicious !== true);
+  const lastShot = usable.reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
+  if (usable.length === 0) {
+    problems.push({ rule: 'LEAD_LOOKED', text: lead.screenshots.length > 0
+      ? 'every screenshot you viewed was flagged suspicious (256x256 or smaller, or a fallback capture); capture the viewport again'
+      : 'you have not viewed a screenshot yourself this session (a capture tool, roblox_screenshots view, or read_image on a captured file)' });
   } else if (lastShot <= change.time) {
-    problems.push(`your last screenshot predates ${change.what}; look again`);
+    problems.push({ rule: 'LEAD_LOOKED', text: `your last usable screenshot predates ${change.what}; look again` });
   }
   const visualDispatches = lead.dispatchLog.filter(entry => entry.role === 'visual' && (entry.tier === 'standard' || entry.tier === 'expert')
     && hasVisualRef(entry.prompt));
   const lastWork = lead.dispatchLog.reduce((latest, entry, index) => (entry.role !== 'visual' && VISUAL_WORK.test(entry.prompt) ? index : latest), -1);
-  const reviewedAfter = lead.dispatchLog.some((entry, index) => index > lastWork && visualDispatches.includes(entry));
-  if (!reviewedAfter) problems.push('no visual/standard or visual/expert review with screenshot paths was dispatched after the last visual work');
+  if (!lead.dispatchLog.some((entry, index) => index > lastWork && visualDispatches.includes(entry))) {
+    problems.push({ rule: 'REVIEW_AFTER_WORK', text: 'no visual/standard or visual/expert review with capture ids was dispatched after the last visual work' });
+  }
   const reviewers = new Set(visualDispatches.map(entry => entry.name).filter(Boolean));
   for (const result of gate.gates) {
     const named = result.gate?.reviewer;
-    if (named !== undefined && !reviewers.has(named)) {
-      problems.push(`docs/${result.scope}/${GATE_FILE} names reviewer "${named}", which is not a visual worker you dispatched`);
-    } else if (named !== undefined) {
+    if (named === undefined) continue;
+    if (!reviewers.has(named)) {
+      problems.push({ rule: 'REVIEWER_DISPATCHED', text: `docs/${result.scope}/${GATE_FILE} names reviewer "${named}", which is not a visual worker you dispatched` });
+    } else {
       const row = workers.find(worker => worker.name === named);
       if (row?.audit?.assets !== undefined && row.audit.assets.screenshots === 0) {
-        problems.push(`reviewer "${named}" never viewed a screenshot (roblox_screenshots view, a capture tool, or read_image on a capture)`);
+        problems.push({ rule: 'REVIEWER_LOOKED', text: `reviewer "${named}" never viewed a screenshot (roblox_screenshots view, a capture tool, or read_image on a capture)` });
       }
     }
   }
-  problems.push(...gate.problems);
-  problems.push(...assetEvidenceProblems(gate.gates, evidence));
-  if (problems.length === 0) return undefined;
-  return deny(`Roblox visual gate FAILED: the objective is visual, so the goal cannot complete (${problems.join('; ')}). `
-    + 'Report "visual gate FAILED" with these reasons, get fresh screenshots, dispatch a visual review, and retry.', 'VISUAL_GATE_FAILED');
+  for (const item of assetEvidenceProblems(gate.gates, evidence)) problems.push({ ...item, rule: 'ASSET_LOGGED' });
+  return { ok: problems.length === 0, problems, gate, change };
 }
+
+/** Decide `update_goal complete` for a visual objective. */
+export function completionDenial({ root, objective, lead, workers = [] }) {
+  if (typeof objective !== 'string' || !VISUAL_OBJECTIVE.test(objective)) return undefined;
+  const report = gateReport({ root, lead, workers });
+  if (report.ok) return undefined;
+  return deny(`Roblox visual gate FAILED: the objective is visual, so the goal cannot complete (${report.problems.map(formatProblem).join('; ')}). `
+    + 'Report "visual gate FAILED" with these reasons, get fresh screenshots, dispatch a visual review, and retry. '
+    + 'roblox_visual_gate shows the same check and every rule.', 'VISUAL_GATE_FAILED');
+}
+
+/** Rule table for roblox_visual_gate. */
+export const allRules = () => ({ ...RULES, ...RUNTIME_RULES });
 
 /* ------------------------------------------------------------------------------------------- */
 /* Coordinator reply checks (agent/turn-stopping)                                               */
@@ -242,9 +259,13 @@ export function finalReply(session, turn) {
  * @param input.reply - final assistant text.
  * @param input.dispatched - dispatches made this turn (`{ name, provider, model, reasoning_effort }`).
  * @param input.gate - `{ ok, problems }` when the visual gate applies, else undefined.
+ * @param input.visualTurn - whether this turn touched visual work (dispatch/finish, capture,
+ *   asset insertion, gate change). The "visual gate FAILED" opening is owed only then, or when the
+ *   reply itself claims visuals are done/good/ready.
  * @param input.lookedSinceChange - whether the coordinator viewed a screenshot after the last change.
+ * @param input.newCaptures - capture ids new since the lead's last reply.
  */
-export function replyCorrections({ reply, dispatched = [], gate, lookedSinceChange = true, newCaptures = [] }) {
+export function replyCorrections({ reply, dispatched = [], gate, visualTurn = false, lookedSinceChange = true, newCaptures = [] }) {
   const out = [];
   if (newCaptures.length > 0 && !/!\[[^\]]*\]\(/.test(reply) && !/no (?:new )?(?:screenshots?|previews?|captures?) worth showing/i.test(reply)) {
     out.push(`Workers captured ${newCaptures.length} new screenshot(s) (${newCaptures.slice(0, 6).join(', ')}). Show the operator the `
@@ -261,13 +282,21 @@ export function replyCorrections({ reply, dispatched = [], gate, lookedSinceChan
   if (gate !== undefined) {
     const firstLine = reply.trim().split(/\r?\n/)[0] ?? '';
     const visualClaim = VISUAL_OBJECTIVE.test(reply) && CLAIM.test(reply);
-    if (!gate.ok && (STATUS.test(reply) || visualClaim) && !/visual gate FAILED/i.test(firstLine)) {
-      out.push(`The visual gate is FAILED (${gate.problems.slice(0, 4).join('; ')}). Open the report with "visual gate FAILED" `
-        + 'and the reasons; do not call the visuals done, good or ready.');
+    if (!gate.ok && (visualTurn || visualClaim) && !/visual gate FAILED/i.test(firstLine)) {
+      out.push(`The visual gate is FAILED (${gate.problems.slice(0, 4).map(item => (typeof item === 'string' ? item : formatProblem(item))).join('; ')}). `
+        + 'Open the report with "visual gate FAILED" and the reasons; do not call the visuals done, good or ready.');
     } else if (gate.ok && visualClaim && !lookedSinceChange) {
       out.push('You called the visuals done/good/ready without viewing a screenshot since the last change. A worker\'s rating is not '
-        + 'evidence: view a capture yourself (read_image on the captured file) before making that claim, or withdraw it.');
+        + 'evidence: view a capture yourself (roblox_screenshots view) before making that claim, or withdraw it.');
     }
   }
   return out;
+}
+
+/** One-line gate status for the lead's prompt, or '' when the gate does not apply. */
+export function gateStatusLine(gate) {
+  if (gate === undefined) return '';
+  if (gate.ok) return 'Roblox visual gate: file checks PASS (completion also checks your screenshots and the reviewer; roblox_visual_gate shows everything).';
+  const rules = [...new Set(gate.problems.map(item => item.rule))].join(', ');
+  return `Roblox visual gate: FAILED on ${rules}. Mention it when you report on visual work; roblox_visual_gate lists each problem.`;
 }

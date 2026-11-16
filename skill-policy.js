@@ -293,10 +293,23 @@ function foldEvent(state, event, session, brain) {
   }
 }
 
+/**
+ * Image attachments in a capture result with their suspicion verdict. A capture stored for a
+ * model without image input (see screenshots.js) counts as taken, but not as seen by that model.
+ */
+function captureImages(content) {
+  const blocks = Array.isArray(content) ? content : [];
+  const text = textOf(blocks);
+  const fallback = /"studioFastPathUnavailable"\s*:\s*true/.test(text);
+  return blocks.filter(block => block?.type === 'image' && block.attachment !== undefined)
+    .map(block => ({ suspicious: fallback || ((block.attachment.width ?? 0) <= 256 && (block.attachment.height ?? 0) <= 256) }));
+}
+
 /** Fold one successful Studio, asset or screenshot tool result. */
 function foldTracked(state, tool, args, content, time) {
   if (SCREENSHOT_TOOLS.includes(tool)) {
-    if (hasImage(content)) state.screenshots.push({ tool, time });
+    const images = captureImages(content);
+    if (images.length > 0) state.screenshots.push({ tool, time, suspicious: images.every(image => image.suspicious) });
   } else if (tool === 'roblox_screenshots') {
     // Viewing a shared capture counts as looking, as of when it was captured, not when viewed:
     // an old capture viewed after a change is still an old picture.
@@ -307,7 +320,7 @@ function foldTracked(state, tool, args, content, time) {
     } catch { /* unreadable summary: nothing counted */ }
     for (const capture of viewed) {
       const captured = Date.parse(capture?.capturedAt ?? '');
-      if (Number.isFinite(captured)) state.screenshots.push({ tool, time: captured, id: capture.id });
+      if (Number.isFinite(captured)) state.screenshots.push({ tool, time: captured, id: capture.id, suspicious: capture.suspicious === true });
     }
   } else if (tool === 'read_image') {
     if (hasImage(content) && typeof args.file_path === 'string' && CAPTURED_FILE.test(args.file_path)) {
@@ -408,7 +421,7 @@ export function assetEvidence(state) {
     thumbnails: [...state.assets.thumbnails].sort(),
     details: [...state.assets.details].sort(),
     changes: [...state.assets.changes],
-    screenshots: state.screenshots.length,
+    screenshots: state.screenshots.filter(shot => shot.suspicious !== true).length,
   };
 }
 
