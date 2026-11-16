@@ -18,6 +18,18 @@
       },
       "versions": [
         {
+          "version": "1.5.1",
+          "publishTimestamp": 1794804097,
+          "engines": {
+            "dsh": ">=0.2.2-rc.2 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/alexmbright/dsh-roblox-development.git",
+            "commit": "53f07bf7a122f8096d9a17369f508051b283bdfd"
+          }
+        },
+        {
           "version": "1.5.0",
           "publishTimestamp": 1794789344,
           "engines": {
