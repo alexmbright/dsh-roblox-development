@@ -184,6 +184,7 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.1** — stricter capture provenance, freshness and reviewer evidence; delayed-result and identical-pixel recapture fixes; runtime-aware visual reporting without unrelated audit/routing reminders; exact verdict, watched-path and asset-sourcing validation.
 - **1.5.0** — Roblox screenshots sidebar tab; captures by text-only models stored and shared; suspicious-capture flag; Studio id namespace guard and backend table; one gate rule source with rule ids, `roblox_visual_gate`, `Ignore:` paths and default backup ignores; gate reporting only on visual turns.
 - **1.4.1** — `roblox_screenshots`: captures shared by id across the worker tree (list, view, selective export) with no files written; the lead shows new worker screenshots as previews; visual reviews accept capture ids.
 - **1.4.0** — opt-in visual quality gate (screenshot-before-accept, visual reviewer requirement, `tools/check-visual-gate.mjs`, asset-sourcing effort floor, report honesty); dispatches announced with model and effort.
