@@ -24,7 +24,7 @@ import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, is
 import { statusContext } from './coordination.js';
 import {
   projectRoot, gateEnabled, dispatchDenial, gateFileEditDenial, playtestInsertDenial, completionDenial,
-  evaluateGate, gateReport, gateStatusLine, allRules, finalReply, replyCorrections,
+  evaluateGate, gateReport, gateStatusLine, allRules, finalReply, replyCorrections, isVisualWork,
 } from './visual-policy.js';
 import { registerScreenshotTool, collectTree, storeTextOnlyCaptures } from './screenshots.js';
 import { crossNamespaceDenial } from './studio-ids.js';
@@ -258,8 +258,7 @@ export function correctionMessage(corrections) {
 /** Tools the visual gate decides; everything else skips its filesystem checks. */
 const VISUAL_GATED = new Set(['subagent', 'edit', 'write', 'apply_patch', 'update_goal', 'insert_asset', 'generate_model']);
 /** Tool calls that make a coordinator turn a visual one for the reporting rule. */
-const VISUAL_TURN_TOOLS = new Set(['screen_capture', 'capture_screenshot', 'capture_device_matrix', 'insert_asset', 'generate_model',
-  'roblox_screenshots', 'roblox_visual_gate']);
+const VISUAL_TURN_TOOLS = new Set(['screen_capture', 'capture_screenshot', 'capture_device_matrix', 'insert_asset', 'generate_model']);
 
 /** Whether this turn of the lead's log touched visual work. */
 export function visualTurnOf(session, turn, gatePaths = []) {
@@ -271,11 +270,14 @@ export function visualTurnOf(session, turn, gatePaths = []) {
     const data = event?.data;
     if (event?.type === 'tool/call') {
       const name = baseToolName(data?.name);
-      if (VISUAL_TURN_TOOLS.has(name) || name === 'subagent' || name === 'send_message') return true;
-      if ((name === 'edit' || name === 'write') && gatePaths.some(file => String(data?.arguments ?? '').includes(file))) return true;
+      const args = typeof data?.arguments === 'string' ? (() => { try { return JSON.parse(data.arguments); } catch { return {}; } })() : data?.arguments ?? {};
+      if (VISUAL_TURN_TOOLS.has(name)) return true;
+      if (name === 'subagent' && (parseRole(args.prompt ?? '')?.role === 'visual' || isVisualWork(args.prompt))) return true;
+      if ((name === 'edit' || name === 'write' || name === 'apply_patch')
+        && gatePaths.some(file => JSON.stringify(args).includes(file))) return true;
     }
-    // A worker finishing (its completion notice lands as an agent message) is visual reporting time.
-    if (event?.type === 'user/message' && data?.source?.kind === 'agent-message') return true;
+    // Generic worker notices may be routing, server code or research; new visual captures
+    // and actual visual dispatches are handled separately rather than treating every message as art work.
   }
   return false;
 }
@@ -357,10 +359,10 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
     let lookedSinceChange = true;
     let visualTurn = false;
     if (full !== undefined) {
-      gate = full.gate;
+      gate = full;
       const lastShot = state.screenshots.filter(shot => shot.suspicious !== true).reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
       lookedSinceChange = lastShot > full.change.time;
-      visualTurn = newCaptures.length > 0 || visualTurnOf(session, turn, gate.gates.map(item => path.join('docs', item.scope, 'VISUAL_GATE.md')));
+      visualTurn = newCaptures.length > 0 || visualTurnOf(session, turn, full.gate.gates.map(item => path.join('docs', item.scope, 'VISUAL_GATE.md')));
     }
     if (dispatched.length === 0 && gate === undefined && newCaptures.length === 0) return;
     const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, visualTurn, lookedSinceChange, newCaptures });

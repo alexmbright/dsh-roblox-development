@@ -28,11 +28,20 @@ import { captureRefs } from './screenshots.js';
 const DENY_NAME = 'roblox-visual-gate';
 const deny = (reason, code) => ({ reason, info: { name: DENY_NAME, code, reason } });
 
-export const VISUAL_OBJECTIVE = /\b(?:visuals?|visually|art|artwork|ui|gui|hud|layout|scene|scenery|looks?|look and feel|lighting|vfx|style|styling|polish|menu|screens?|theme|aesthetic|graphics)\b/i;
+export const VISUAL_OBJECTIVE = /\b(?:visuals?|visually|art|artwork|ui|gui|hud|layout|scene|scenery|looks?|look and feel|lighting|vfx|style|styling|polish|menu|screens?|theme|aesthetic|graphics|beautiful|beautify|clipping|responsive controls)\b|界面|视觉|美化|布局|灯光|场景/i;
 export const VISUAL_WORK = /\b(?:visuals?|art|ui|gui|hud|layout|scene|lighting|vfx|style|menu|screen|theme|asset|assets|model|models|prop|props|mesh|texture|decal|icon|button|frame)\b|src\/client|StarterGui|StarterPlayer|ReplicatedFirst/i;
+export const isVisualWork = text => VISUAL_WORK.test(String(text ?? '').replace(/\bvisual[ -]gate\b/gi, 'review policy'));
 export const ASSET_WORK = /\b(?:creator store|toolbox|insert_asset|search_assets|search_asset|asset id|marketplace asset)\b/i;
 const IMAGE_PATH = /[\w./\\-]+\.(?:png|jpe?g|webp|gif)\b/i;
-const CLAIM = /\b(?:done|good|great|ready|finished|complete|completed|polished|looks? (?:good|great|fine|nice|clean)|ship(?:pable)?|approved|pass(?:es|ed)?)\b/i;
+// Match approval of the visual deliverable, not unrelated words anywhere in an audit/report.
+export function claimsVisualCompletion(reply) {
+  const subject = '(?:visuals?|art(?:work)?|ui|gui|hud|layout|scene|lighting|vfx|menu|screens?|theme|graphics)';
+  return String(reply ?? '').split(/(?:[.!?;,]|\n|\bbut\b)+/i).some(sentence => {
+    if (/\b(?:not|never|cannot|can't|isn't|aren't|doesn't|do not|don't|failed|fail|audit|routing|gate|checker|question)\b/i.test(sentence)) return false;
+    return new RegExp(`\\b${subject}\\b[^,;:]{0,50}\\b(?:is|are|looks?|now|all)\\s+(?:done|good|great|ready|finished|complete|completed|polished|fine|nice|clean|approved|shippable)\\b`, 'i').test(sentence)
+      || new RegExp(`\\b(?:finished|completed|polished|approved)\\s+(?:the\\s+)?${subject}\\b`, 'i').test(sentence);
+  });
+}
 export const ASSET_RULE_TEMPLATE = 'Asset sourcing: run at least 6 varied search_assets queries per piece, get_asset_thumbnail and '
   + 'get_asset_details for every shortlisted candidate; scripts, triangle counts and bad pivots are fixable (insert in Edit mode, '
   + 'strip scripts, rescale), so reject a candidate only after seeing it in the scene, with a reason. Never insert during a playtest. '
@@ -103,8 +112,9 @@ export function dispatchDenial(prompt, args, parsedRole, roleRoutes = () => unde
     if (Array.isArray(routes) && routes.length > 0 && !routes.some(route => route.provider === args?.provider
       && route.model === args?.model && route.reasoning_effort === args?.reasoning_effort)
       && !(typeof args?.capacityFallback === 'string' && args.capacityFallback.trim() !== '')) {
-      problems.push(`the route ${routeLabel(args ?? {})} is not a ${parsedRole.role}/${parsedRole.tier} route `
-        + `(expected ${routes.map(routeLabel).join(' or ')})`);
+      const reason = `Roblox routing: worker assignment rejected (the route ${routeLabel(args ?? {})} is not a ${parsedRole.role}/${parsedRole.tier} route `
+        + `(expected ${routes.map(routeLabel).join(' or ')})).`;
+      return { reason, info: { name: 'roblox-routing-guard', code: 'ROUTING_ROLE_MISMATCH', reason } };
     }
     if (parsedRole.role === 'visual') {
       if (!hasVisualRef(prompt)) {
@@ -164,9 +174,9 @@ export function assetEvidenceProblems(gates, evidence) {
 /** Runtime-only rules (they need session evidence the file check cannot see). */
 export const RUNTIME_RULES = {
   LEAD_LOOKED: 'the coordinator viewed a usable screenshot (not flagged suspicious) captured after the last watched change',
-  REVIEW_AFTER_WORK: 'a visual/standard or visual/expert review with capture ids was dispatched after the last visual work',
+  REVIEW_AFTER_WORK: 'the named visual/standard or visual/expert reviewer was dispatched after the last visual work/change and before its verdict',
   REVIEWER_DISPATCHED: 'the gate reviewer is a visual worker this coordinator dispatched',
-  REVIEWER_LOOKED: 'the gate reviewer itself viewed a screenshot',
+  REVIEWER_LOOKED: 'the named reviewer has readable evidence of a fresh usable screenshot viewed before its verdict',
   ASSET_LOGGED: 'claimed queries, thumbnails and details match the asset tool calls in the session logs',
 };
 
@@ -201,9 +211,11 @@ export function gateReport({ root, lead, workers = [] }) {
   }
   const visualDispatches = lead.dispatchLog.filter(entry => entry.role === 'visual' && (entry.tier === 'standard' || entry.tier === 'expert')
     && hasVisualRef(entry.prompt));
-  const lastWork = lead.dispatchLog.reduce((latest, entry, index) => (entry.role !== 'visual' && VISUAL_WORK.test(entry.prompt) ? index : latest), -1);
-  if (!lead.dispatchLog.some((entry, index) => index > lastWork && visualDispatches.includes(entry))) {
-    problems.push({ rule: 'REVIEW_AFTER_WORK', text: 'no visual/standard or visual/expert review with capture ids was dispatched after the last visual work' });
+  const lastWork = lead.dispatchLog.reduce((latest, entry) => (entry.role !== 'visual' && isVisualWork(entry.prompt)
+    ? Math.max(latest, entry.time ?? 0) : latest), 0);
+  const reviewBoundary = Math.max(lastWork, change.time);
+  if (!visualDispatches.some(entry => (entry.time ?? 0) > reviewBoundary)) {
+    problems.push({ rule: 'REVIEW_AFTER_WORK', text: 'no visual/standard or visual/expert review with capture ids was dispatched after the last visual work or watched change' });
   }
   const reviewers = new Set(visualDispatches.map(entry => entry.name).filter(Boolean));
   for (const result of gate.gates) {
@@ -213,8 +225,24 @@ export function gateReport({ root, lead, workers = [] }) {
       problems.push({ rule: 'REVIEWER_DISPATCHED', text: `docs/${result.scope}/${GATE_FILE} names reviewer "${named}", which is not a visual worker you dispatched` });
     } else {
       const row = workers.find(worker => worker.name === named);
-      if (row?.audit?.assets !== undefined && row.audit.assets.screenshots === 0) {
-        problems.push({ rule: 'REVIEWER_LOOKED', text: `reviewer "${named}" never viewed a screenshot (roblox_screenshots view, a capture tool, or read_image on a capture)` });
+      const shots = row?.audit?.assets?.screenshotEvidence;
+      const dispatch = visualDispatches.filter(entry => entry.name === named).at(-1);
+      if ((dispatch?.time ?? 0) <= reviewBoundary || (dispatch?.time ?? 0) > result.mtime) {
+        problems.push({ rule: 'REVIEW_AFTER_WORK', text: `reviewer "${named}" was not dispatched after the last visual work/change and before this verdict` });
+      }
+      const fresh = shot => shot.suspicious !== true && Number.isFinite(shot.time) && Number.isFinite(shot.viewedAt)
+        && shot.time > change.time && shot.viewedAt >= shot.time && shot.viewedAt >= (dispatch?.time ?? Infinity)
+        && shot.viewedAt <= result.mtime;
+      if (!Array.isArray(shots) || !shots.some(fresh)) {
+        problems.push({ rule: 'REVIEWER_LOOKED', text: `reviewer "${named}" has no readable evidence of viewing a fresh usable screenshot before the verdict` });
+      }
+      // Every gate reference must be an image actually opened, not just a typed filename or id.
+      const refs = result.gate.screenshots.map(value => ({ ids: captureRefs(value), path: IMAGE_PATH.exec(value)?.[0] }));
+      if (!Array.isArray(shots) || refs.some(ref => !shots.some(shot =>
+        (ref.ids.includes(shot.id) || (ref.path && typeof shot.path === 'string'
+          && path.resolve(root, ref.path) === path.resolve(root, shot.path)))
+        && fresh(shot)))) {
+        problems.push({ rule: 'REVIEWER_LOOKED', text: `reviewer "${named}" did not view every capture reference listed in this gate after the last change` });
       }
     }
   }
@@ -224,7 +252,7 @@ export function gateReport({ root, lead, workers = [] }) {
 
 /** Decide `update_goal complete` for a visual objective. */
 export function completionDenial({ root, objective, lead, workers = [] }) {
-  if (typeof objective !== 'string' || !VISUAL_OBJECTIVE.test(objective)) return undefined;
+  if (typeof objective !== 'string' || !VISUAL_OBJECTIVE.test(objective.replace(/\bvisual[ -]gate\b/gi, 'review policy'))) return undefined;
   const report = gateReport({ root, lead, workers });
   if (report.ok) return undefined;
   return deny(`Roblox visual gate FAILED: the objective is visual, so the goal cannot complete (${report.problems.map(formatProblem).join('; ')}). `
@@ -281,7 +309,7 @@ export function replyCorrections({ reply, dispatched = [], gate, visualTurn = fa
   }
   if (gate !== undefined) {
     const firstLine = reply.trim().split(/\r?\n/)[0] ?? '';
-    const visualClaim = VISUAL_OBJECTIVE.test(reply) && CLAIM.test(reply);
+    const visualClaim = claimsVisualCompletion(reply);
     if (!gate.ok && (visualTurn || visualClaim) && !/visual gate FAILED/i.test(firstLine)) {
       out.push(`The visual gate is FAILED (${gate.problems.slice(0, 4).map(item => (typeof item === 'string' ? item : formatProblem(item))).join('; ')}). `
         + 'Open the report with "visual gate FAILED" and the reasons; do not call the visuals done, good or ready.');

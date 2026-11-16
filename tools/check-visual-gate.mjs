@@ -11,7 +11,7 @@
  * it never runs a different project copy. A project may keep a copy of this file so the gate can
  * be checked outside DSH; when the copy is older than the installed bundle, run the bundled one.
  */
-import { readFileSync, readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync, lstatSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +28,9 @@ export const MIN_QUERIES = 6;
 /** Every rule the gate enforces. Problems carry the id. */
 export const RULES = {
   GATE_MISSING: `docs/<scope>/${GATE_FILE} exists and is readable`,
-  VERDICT: 'Verdict: PASS',
+  VERDICT: 'Verdict: PASS (the entire value must be PASS or FAIL)',
+  CLIENT_SOURCE: 'explicit Client source: paths are existing project-relative files or folders, not globs or escapes',
+  ASSET_SOURCING: 'an explicit "## Asset sourcing" section contains Piece records or "Not applicable: <substantive UI-only reason>"',
   REVIEWER: 'Reviewer: <worker name> (visual/standard) or (visual/expert)',
   SCREENSHOTS: `at least ${MIN_SCREENSHOTS} distinct screenshots (capture ids or names) under "Screenshots:"`,
   CHECKLIST: `a checklist of at least ${MIN_CHECKLIST} "- [x]" items`,
@@ -91,7 +93,7 @@ function candidateRow(text) {
 /** Parse one gate file. */
 export function parseGate(text) {
   const lines = String(text ?? '').split(/\r?\n/);
-  const verdict = /^(PASS|FAIL)\b/i.exec(field(text, 'Verdict') ?? '')?.[1]?.toUpperCase();
+  const verdict = /^(PASS|FAIL)$/i.exec(field(text, 'Verdict') ?? '')?.[1]?.toUpperCase();
   const reviewerLine = field(text, 'Reviewer') ?? '';
   const reviewerMatch = /^`?([A-Za-z0-9][\w./-]*)`?\s*(?:\(([^)]*)\))?/.exec(reviewerLine);
   const reviewer = reviewerMatch?.[1];
@@ -101,12 +103,30 @@ export function parseGate(text) {
   const checklist = lines.map(line => /^[ \t]*[-*+][ \t]+\[( |x|X)\][ \t]+(.+)$/.exec(line))
     .filter(Boolean).map(match => ({ checked: match[1] !== ' ', text: match[2].trim() }));
   const ignoreLine = field(text, 'Ignore');
+  const clientSourceLine = field(text, 'Client source');
 
   const pieces = [];
+  const assetSourcing = { sections: 0, notApplicable: [], outsidePieces: 0 };
+  let inSourcing = false;
   let current;
   let mode;
   for (const line of lines) {
+    if (/^##[ \t]+Asset sourcing[ \t]*$/i.test(line)) {
+      assetSourcing.sections += 1;
+      inSourcing = true;
+      current = undefined;
+      mode = undefined;
+      continue;
+    }
+    if (/^#{1,2}[ \t]/.test(line)) inSourcing = false;
     const piece = /^###[ \t]+Piece:[ \t]*(.+)$/i.exec(line);
+    if (!inSourcing) {
+      if (piece) assetSourcing.outsidePieces += 1;
+      current = undefined;
+      continue;
+    }
+    const notApplicable = /^[ \t>*_-]*Not applicable:[*_]*[ \t]*(.*)$/i.exec(line);
+    if (notApplicable) assetSourcing.notApplicable.push(notApplicable[1].trim());
     if (piece) {
       current = { name: piece[1].trim(), final: '', queries: [], candidates: [] };
       pieces.push(current);
@@ -134,9 +154,10 @@ export function parseGate(text) {
   }
   return {
     verdict, reviewer, role, screenshots: [...new Set(screenshots)], checklist,
-    clientSource: list(field(text, 'Client source')),
+    clientSource: list(clientSourceLine),
+    clientSourceExplicit: clientSourceLine !== undefined,
     ignore: ignoreLine === undefined ? undefined : list(ignoreLine),
-    pieces,
+    pieces, assetSourcing,
   };
 }
 
@@ -156,42 +177,84 @@ export function globToRegExp(glob) {
   return new RegExp(`^${out}$`, 'i');
 }
 
-/** The watched folders and ignore patterns one gate applies. */
+/** The watched files/folders and ignore patterns one gate applies. */
 export function watchSpec(gate) {
   return {
-    watched: gate?.clientSource?.length > 0 ? gate.clientSource : DEFAULT_CLIENT_SOURCE,
+    watched: gate?.clientSourceExplicit || gate?.clientSource?.length > 0 ? gate.clientSource : DEFAULT_CLIENT_SOURCE,
     ignored: [...ALWAYS_IGNORED, ...(gate?.ignore ?? DEFAULT_IGNORE)],
   };
 }
 
-/** Newest modification time (ms) of any non-ignored file under the given folders. */
-export function latestChange(root, folders, ignored = [...ALWAYS_IGNORED, ...DEFAULT_IGNORE]) {
+const within = (root, full) => {
+  const relative = path.relative(root, full);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+};
+const invalidWatch = value => typeof value !== 'string' || value.trim() === ''
+  || path.posix.isAbsolute(value) || path.win32.isAbsolute(value) || /^[A-Za-z]:/.test(value)
+  || /[\\\\*?\[\]{}\x00-\x1f]/.test(value) || value.split('/').includes('..');
+
+/**
+ * Newest non-ignored file mtime, plus fail-closed CLIENT_SOURCE problems.
+ * Only omitted default roots may be absent; explicit files/folders must exist.
+ * Symlinks are followed only within the real project root, with cycle detection.
+ */
+export function latestChange(root, sources, ignored = [...ALWAYS_IGNORED, ...DEFAULT_IGNORE], { allowMissing = false } = {}) {
   const matchers = ignored.map(globToRegExp);
+  const problems = [];
+  const fail = (relative, detail) => problems.push(problem('CLIENT_SOURCE', `Client source "${relative}": ${detail}`));
+  const rootPath = path.resolve(root);
+  let realRoot;
+  try { realRoot = realpathSync(rootPath); }
+  catch { return { time: 0, path: undefined, problems: [problem('CLIENT_SOURCE', 'project root is missing or unreadable')] }; }
   let newest = 0;
   let newestPath;
-  const walk = dir => {
-    let entries;
+  const walk = (full, ancestors = new Set(), optional = false) => {
+    const relative = path.relative(rootPath, full).split(path.sep).join('/') || '.';
+    let info;
+    let real;
     try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
+      // lstat distinguishes an absent optional default from a dangling symlink.
+      lstatSync(full);
+    } catch (error) {
+      if (!(optional && error.code === 'ENOENT')) fail(relative, `missing or unreadable (${error.code ?? 'unknown error'})`);
       return;
     }
-    for (const entry of entries) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue;
-      const full = path.join(dir, entry.name);
-      const relative = path.relative(root, full).split(path.sep).join('/');
-      if (entry.isDirectory()) {
-        if (!matchers.some(matcher => matcher.test(`${relative}/`) || matcher.test(`${relative}/x`))) walk(full);
-      } else if (entry.isFile() && !matchers.some(matcher => matcher.test(relative))) {
-        try {
-          const time = statSync(full).mtimeMs;
-          if (time > newest) { newest = time; newestPath = relative; }
-        } catch { /* vanished */ }
+    try {
+      real = realpathSync(full);
+      if (!within(realRoot, real)) { fail(relative, 'symlink escapes the project root'); return; }
+      info = statSync(full);
+    } catch (error) { fail(relative, `missing or unreadable (${error.code ?? 'unknown error'})`); return; }
+    if (info.isFile()) {
+      if (!matchers.some(matcher => matcher.test(relative)) && info.mtimeMs > newest) {
+        newest = info.mtimeMs;
+        newestPath = relative;
       }
+      return;
+    }
+    if (!info.isDirectory()) { fail(relative, 'must be a regular file or directory'); return; }
+    if (ancestors.has(real)) { fail(relative, 'symlink directory cycle'); return; }
+    if (matchers.some(matcher => matcher.test(`${relative}/`) || matcher.test(`${relative}/x`))) return;
+    let entries;
+    try { entries = readdirSync(full, { withFileTypes: true }); }
+    catch (error) { fail(relative, `directory is unreadable (${error.code ?? 'unknown error'})`); return; }
+    const nextAncestors = new Set([...ancestors, real]);
+    for (const entry of entries) {
+      if (entry.name !== '.git' && entry.name !== 'node_modules') walk(path.join(full, entry.name), nextAncestors);
     }
   };
-  for (const folder of folders) walk(path.resolve(root, folder));
-  return { time: newest, path: newestPath };
+  for (const source of sources) {
+    if (invalidWatch(source)) { fail(String(source), 'must be a project-relative file or folder; globs, absolute paths, backslashes and .. escapes are not supported'); continue; }
+    const full = path.resolve(rootPath, source);
+    if (!within(rootPath, full)) { fail(source, 'escapes the project root'); continue; }
+    walk(full, new Set(), allowMissing);
+  }
+  return { time: newest, path: newestPath, problems };
+}
+
+function validAuthorization(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value ?? '')) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
 /** Asset-sourcing problems for one piece. */
@@ -199,8 +262,11 @@ export function pieceProblems(piece) {
   const problems = [];
   const label = `piece "${piece.name}"`;
   const primitive = /\b(?:primitive|part|parts|csg|code-built|procedural|placeholder|greybox)\b/i.test(piece.final);
-  const finalId = /(\d{4,})/.exec(piece.final)?.[1];
-  if (!primitive && finalId === undefined) problems.push(problem('ASSET_FINAL', `${label}: "Final:" must name the kept asset id or say primitive`));
+  const finalIds = piece.final.match(/\d{4,}/g) ?? [];
+  const finalId = finalIds.length === 1 ? finalIds[0] : undefined;
+  if ((primitive && finalIds.length > 0) || (!primitive && finalId === undefined)) {
+    problems.push(problem('ASSET_FINAL', `${label}: "Final:" must unambiguously name one kept asset id or say primitive, not both`));
+  }
   if (primitive) {
     const distinct = new Set(piece.queries.map(q => q.toLowerCase()));
     if (distinct.size < MIN_QUERIES) problems.push(problem('ASSET_QUERIES', `${label}: primitive final art needs at least ${MIN_QUERIES} distinct search_assets queries (found ${distinct.size})`));
@@ -223,8 +289,8 @@ export function pieceProblems(piece) {
       const creator = f.creator ?? '';
       if (creator === '') problems.push(problem('ASSET_KEPT_RECORD', `${name}: kept asset must record its owner creator`));
       if ((f.price ?? '') === '') problems.push(problem('ASSET_KEPT_RECORD', `${name}: kept asset must record its price`));
-      if (creator !== '' && !OWN_CREATOR.test(creator) && !/^\d{4}-\d{2}-\d{2}\b/.test(f.authorized ?? '')) {
-        problems.push(problem('ASSET_AUTHORIZED', `${name}: kept cross-owner asset needs a dated authorizing decision ("authorized: YYYY-MM-DD")`));
+      if (creator !== '' && !OWN_CREATOR.test(creator) && !validAuthorization(f.authorized)) {
+        problems.push(problem('ASSET_AUTHORIZED', `${name}: kept cross-owner asset needs a dated authorizing decision with a valid calendar date ("authorized: YYYY-MM-DD")`));
       }
     } else {
       problems.push(problem('ASSET_STATUS', `${name}: status must be kept or rejected`));
@@ -263,9 +329,22 @@ export function checkGate(root, scope) {
   const open = gate.checklist.filter(item => !item.checked);
   if (gate.verdict === 'PASS' && open.length > 0) problems.push(problem('CHECKLIST_OPEN', `PASS with ${open.length} unchecked checklist item(s): ${open.map(item => item.text).join('; ')}`));
   const watch = watchSpec(gate);
-  const latest = latestChange(root, watch.watched, watch.ignored);
+  if (gate.clientSourceExplicit && watch.watched.length === 0) {
+    problems.push(problem('CLIENT_SOURCE', 'explicit "Client source:" must list at least one existing project-relative file or folder; omit the line to use defaults'));
+  }
+  const latest = latestChange(root, watch.watched, watch.ignored, { allowMissing: !gate.clientSourceExplicit });
+  problems.push(...latest.problems);
   if (latest.time > 0 && mtime <= latest.time) {
     problems.push(problem('STALE', `${latest.path} changed ${isoOf(latest.time)}, after the gate file (${isoOf(mtime)}); re-review with fresh screenshots, or add the path to "Ignore:" if it is not a visual change`));
+  }
+  const sourcing = gate.assetSourcing;
+  const reason = sourcing.notApplicable[0] ?? '';
+  // A deliberate UI-only exemption must describe the work, not just say N/A/no assets.
+  const substantiveUiOnly = reason.length >= 24 && /\bUI[- ]only\b/i.test(reason)
+    && (reason.match(/[A-Za-z]{2,}/g) ?? []).length >= 5 && !/[<>]/.test(reason);
+  if (sourcing.sections !== 1 || sourcing.outsidePieces > 0
+    || (gate.pieces.length === 0 ? sourcing.notApplicable.length !== 1 || !substantiveUiOnly : sourcing.notApplicable.length > 0)) {
+    problems.push(problem('ASSET_SOURCING', 'include exactly one "## Asset sourcing" section with at least one "### Piece:" block, or "Not applicable: <substantive UI-only reason>" without Piece blocks'));
   }
   for (const piece of gate.pieces) problems.push(...pieceProblems(piece));
   return { scope, file, ok: problems.length === 0, problems, gate, mtime, latest, watch };

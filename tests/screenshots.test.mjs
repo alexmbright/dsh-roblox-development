@@ -105,10 +105,10 @@ test('roblox_screenshots list, view and selective export', async () => {
 test('viewing a shared capture counts as looking, dated by when it was captured', () => {
   const id = captureId('sha256-aaaaaaaaaaaaaaaa1111111111');
   const callId = 'v1';
-  const summary = JSON.stringify({ captures: [{ id, capturedAt: new Date(T0 + 1000).toISOString() }], viewable: true });
+  const summary = JSON.stringify({ captures: [{ id, attachmentId: 'sha256-aaaaaaaaaaaaaaaa1111111111', capturedAt: new Date(T0 + 1000).toISOString() }], viewable: true });
   const lead = session('lead', [
     { type: 'tool/call', time: T0 + 99_000, data: { turn: 1, name: 'roblox_screenshots', callId, arguments: JSON.stringify({ action: 'view', ids: [id] }) } },
-    { type: 'tool/result', time: T0 + 99_000, data: { turn: 1, message: { toolCallId: callId, content: [{ type: 'text', text: summary }, { type: 'image', attachment: ref('x') }] } } },
+    { type: 'tool/result', time: T0 + 99_000, data: { turn: 1, message: { toolCallId: callId, content: [{ type: 'text', text: summary }, { type: 'image', attachment: ref('sha256-aaaaaaaaaaaaaaaa1111111111') }] } } },
   ]);
   const state = sessionState(lead, brain);
   assert.deepEqual(state.screenshots.map(s => ({ time: s.time, id: s.id })), [{ time: T0 + 1000, id }]);
@@ -161,18 +161,19 @@ test('a gate reviewer that never viewed a screenshot cannot pass the gate', asyn
   mkdirSync(path.join(root, 'docs/x'), { recursive: true });
   const gate = path.join(root, 'docs/x/VISUAL_GATE.md');
   writeFileSync(gate, 'Verdict: PASS\nReviewer: reviewer (visual/standard)\n\nScreenshots:\n- cap-1a2b3c4d5e\n- cap-2b3c4d5e6f\n- cap-3c4d5e6f7a\n\n'
-    + '- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] e\n');
+    + '- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] e\n## Asset sourcing\nNot applicable: UI-only layout changes with no art added or replaced.\n');
   utimesSync(gate, (T0 + 60_000) / 1000, (T0 + 60_000) / 1000);
   const prompt = 'Role: visual/standard\nView cap-1a2b3c4d5e.\nVerdict: PASS|FAIL with a checklist in docs/x/VISUAL_GATE.md.';
   const lead = {
     screenshots: [{ time: T0 + 100_000 }],
-    dispatchLog: [{ name: 'reviewer', role: 'visual', tier: 'standard', prompt }],
+    dispatchLog: [{ name: 'reviewer', role: 'visual', tier: 'standard', time: T0 + 1000, prompt }],
     assets: { searches: [], thumbnails: new Set(), details: new Set(), changes: [] },
   };
   const blindRow = [{ name: 'reviewer', audit: { assets: { searches: [], thumbnails: [], details: [], changes: [], screenshots: 0 } } }];
   const denial = completionDenial({ root, objective: 'polish the UI', lead, workers: blindRow, runScript: () => undefined });
-  assert.match(denial.reason, /reviewer "reviewer" never viewed a screenshot/);
-  const sighted = [{ name: 'reviewer', audit: { assets: { ...blindRow[0].audit.assets, screenshots: 3 } } }];
+  assert.match(denial.reason, /reviewer "reviewer" has no readable evidence/);
+  const screenshotEvidence = ['cap-1a2b3c4d5e', 'cap-2b3c4d5e6f', 'cap-3c4d5e6f7a'].map(id => ({ id, time: T0 + 2000, viewedAt: T0 + 3000, suspicious: false }));
+  const sighted = [{ name: 'reviewer', audit: { assets: { ...blindRow[0].audit.assets, screenshots: 3, screenshotEvidence } } }];
   assert.equal(completionDenial({ root, objective: 'polish the UI', lead, workers: sighted, runScript: () => undefined }), undefined);
 });
 

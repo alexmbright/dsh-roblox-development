@@ -22,6 +22,7 @@
 import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { captureId, isSuspicious, STORED_MARKER } from './screenshots.js';
 
 export const WORKFLOW_SKILL = 'roblox-tiered-workflow';
 export const MUTATING_TOOLS = ['edit', 'write', 'apply_patch'];
@@ -189,7 +190,7 @@ export const SCREENSHOT_TOOLS = ['screen_capture', 'capture_screenshot', 'captur
 const TRACKED_TOOLS = new Set([...SCREENSHOT_TOOLS, 'read_image', 'solo_playtest', 'multiplayer_playtest', 'start_stop_play',
   'search_assets', 'search_asset', 'get_asset_thumbnail', 'get_asset_details', 'insert_asset', 'generate_model',
   'roblox_screenshots']);
-/** A read_image path counts as a screenshot only when it names a capture. */
+/** Capture-like filename hints only; naming is never evidence of capture provenance. */
 export const CAPTURED_FILE = /(?:^|[\\/])(?:screenshots?|captures?)[\\/]|screen[-_ ]?shot|screen[-_ ]?capture|capture|device[-_ ]?matrix/i;
 const ROLE_LINE = /^[ \t>*_-]*Role:[*_]*[ \t]*`?([a-z]+)\/(fast|standard|expert)\b/im;
 /** Parse the optional `Role: <role>/<tier>` line of an assignment. */
@@ -205,7 +206,9 @@ const parseArgs = raw => {
     return {};
   }
 };
-const hasImage = content => Array.isArray(content) && content.some(block => block?.type === 'image');
+const imageAttachments = content => (Array.isArray(content) ? content : [])
+  .filter(block => block?.type === 'image' && typeof block.attachment?.attachmentId === 'string')
+  .map(block => block.attachment);
 
 function freshState() {
   return {
@@ -215,6 +218,7 @@ function freshState() {
     pendingTracked: new Map(),
     dispatchLog: [],
     screenshots: [],
+    captures: new Map(),
     playing: false,
     assets: { searches: [], thumbnails: new Set(), details: new Set(), changes: [] },
     loaded: new Set(),
@@ -235,9 +239,9 @@ function foldEvent(state, event, session, brain) {
           if (typeof name === 'string') state.pendingSkill.set(data.callId, name);
         } catch { /* malformed arguments never loaded a skill */ }
       } else if (data?.name === DISPATCH_TOOL) {
-        state.pendingDispatch.set(data.callId, parseArgs(data.arguments));
+        state.pendingDispatch.set(data.callId, { args: parseArgs(data.arguments), time: event.time ?? 0 });
       } else if (TRACKED_TOOLS.has(baseToolName(data?.name))) {
-        state.pendingTracked.set(data.callId, { tool: baseToolName(data.name), args: parseArgs(data.arguments) });
+        state.pendingTracked.set(data.callId, { tool: baseToolName(data.name), args: parseArgs(data.arguments), time: event.time ?? 0 });
       }
       return;
     case 'tool/result': {
@@ -251,7 +255,7 @@ function foldEvent(state, event, session, brain) {
         if (pinnedSkillFrom(textOf(data.message.content), brain, name) === name) state.loaded.add(name);
         else state.shadowed.add(name);
       } else if (state.pendingDispatch.has(callId)) {
-        const args = state.pendingDispatch.get(callId);
+        const { args, time } = state.pendingDispatch.get(callId);
         state.pendingDispatch.delete(callId);
         if (!ok) return;
         state.dispatches += 1;
@@ -260,12 +264,12 @@ function foldEvent(state, event, session, brain) {
         state.dispatchLog.push({
           name: started ?? (typeof args.name === 'string' ? args.name : ''),
           provider: args.provider, model: args.model, reasoning_effort: args.reasoning_effort,
-          ...parseRole(prompt), prompt, time: event.time ?? Date.now(), turn: data.turn,
+          ...parseRole(prompt), prompt, time, turn: data.turn,
         });
       } else if (state.pendingTracked.has(callId)) {
-        const { tool, args } = state.pendingTracked.get(callId);
+        const { tool, args, time: callTime } = state.pendingTracked.get(callId);
         state.pendingTracked.delete(callId);
-        if (ok) foldTracked(state, tool, args, data.message.content, event.time ?? Date.now());
+        if (ok) foldTracked(state, tool, args, data.message.content, event.time ?? 0, session, callTime);
       }
       return;
     }
@@ -299,32 +303,84 @@ function foldEvent(state, event, session, brain) {
  */
 function captureImages(content) {
   const blocks = Array.isArray(content) ? content : [];
-  const text = textOf(blocks);
-  const fallback = /"studioFastPathUnavailable"\s*:\s*true/.test(text);
-  return blocks.filter(block => block?.type === 'image' && block.attachment !== undefined)
-    .map(block => ({ suspicious: fallback || ((block.attachment.width ?? 0) <= 256 && (block.attachment.height ?? 0) <= 256) }));
+  const fallback = /"studioFastPathUnavailable"\s*:\s*true/.test(textOf(blocks));
+  const images = imageAttachments(blocks).map(attachment => ({ attachment, viewed: true }));
+  for (const line of textOf(blocks).split('\n')) {
+    if (!line.startsWith(STORED_MARKER)) continue;
+    try {
+      const stored = JSON.parse(line.slice(STORED_MARKER.length));
+      if (typeof stored?.attachment?.attachmentId === 'string') images.push({ attachment: stored.attachment, viewed: false });
+    } catch { /* malformed marker: no provenance */ }
+  }
+  return images.map(image => ({ ...image, suspicious: isSuspicious(image.attachment, fallback) }));
+}
+
+/** Retain the latest proven capture occurrence; a re-view alone never supplies a new time. */
+function rememberCapture(state, capture) {
+  const previous = state.captures.get(capture.id);
+  const known = previous === undefined ? capture : {
+    ...previous, ...capture,
+    time: Math.max(previous.time, capture.time),
+    suspicious: capture.time > previous.time ? capture.suspicious : previous.suspicious || capture.suspicious,
+  };
+  state.captures.set(capture.id, known);
+  return known;
+}
+
+/** Resolve the logged path without consulting mutable disk state during session replay. */
+function captureFile(args, session) {
+  if (typeof args.file_path !== 'string' || args.file_path === '') return undefined;
+  const cwd = session?.header?.cwd;
+  if (!path.isAbsolute(args.file_path) && (typeof cwd !== 'string' || cwd === '')) return undefined;
+  return { path: path.resolve(cwd ?? '', args.file_path) };
 }
 
 /** Fold one successful Studio, asset or screenshot tool result. */
-function foldTracked(state, tool, args, content, time) {
+function foldTracked(state, tool, args, content, time, session, callTime) {
   if (SCREENSHOT_TOOLS.includes(tool)) {
-    const images = captureImages(content);
-    if (images.length > 0) state.screenshots.push({ tool, time, suspicious: images.every(image => image.suspicious) });
+    for (const image of captureImages(content)) {
+      const capture = rememberCapture(state, {
+        id: captureId(image.attachment.attachmentId), attachmentId: image.attachment.attachmentId,
+        time: callTime, suspicious: image.suspicious,
+      });
+      // A real recapture may have identical pixels. Its call time proves a new occurrence;
+      // read_image/shared re-views still require a proven capture occurrence for those bytes.
+      if (image.viewed) state.screenshots.push({ tool, time: callTime, viewedAt: time, id: capture.id, suspicious: image.suspicious });
+    }
   } else if (tool === 'roblox_screenshots') {
-    // Viewing a shared capture counts as looking, as of when it was captured, not when viewed:
-    // an old capture viewed after a change is still an old picture.
-    if (args.action !== 'view' || !hasImage(content)) return;
-    let viewed = [];
+    // Listing may establish provenance for a later read_image, but is never itself a visual look.
+    if (args.action !== 'list' && args.action !== 'view') return;
+    let captures;
     try {
-      viewed = JSON.parse(textOf(content)).captures ?? [];
-    } catch { /* unreadable summary: nothing counted */ }
-    for (const capture of viewed) {
+      captures = JSON.parse(textOf(content)).captures;
+    } catch { return; }
+    if (!Array.isArray(captures)) return;
+    const images = imageAttachments(content);
+    for (const capture of captures) {
       const captured = Date.parse(capture?.capturedAt ?? '');
-      if (Number.isFinite(captured)) state.screenshots.push({ tool, time: captured, id: capture.id, suspicious: capture.suspicious === true });
+      if (!Number.isFinite(captured) || captured <= 0 || captured > time || typeof capture.id !== 'string') continue;
+      const image = images.find(attachment => attachment.attachmentId === capture.attachmentId
+        || captureId(attachment.attachmentId) === capture.id);
+      const known = rememberCapture(state, {
+        id: capture.id, time: captured, attachmentId: capture.attachmentId ?? image?.attachmentId,
+        ...(typeof capture.path === 'string' && capture.path !== '' ? { path: capture.path } : {}),
+        suspicious: capture.suspicious === true || isSuspicious(image ?? capture),
+      });
+      if (args.action === 'view' && image !== undefined) {
+        state.screenshots.push({ tool, time: known.time, viewedAt: time, id: known.id,
+          ...(known.path ? { path: known.path } : {}), suspicious: known.suspicious });
+      }
     }
   } else if (tool === 'read_image') {
-    if (hasImage(content) && typeof args.file_path === 'string' && CAPTURED_FILE.test(args.file_path)) {
-      state.screenshots.push({ tool, time, path: args.file_path });
+    const file = captureFile(args, session);
+    if (file === undefined) return;
+    for (const attachment of imageAttachments(content)) {
+      const known = state.captures.get(captureId(attachment.attachmentId));
+      // A suggestive filename (including a renamed random image) proves nothing. Only an
+      // attachment already emitted by a capture tool or listed by roblox_screenshots qualifies.
+      if (known === undefined || known.attachmentId !== attachment.attachmentId) continue;
+      state.screenshots.push({ tool, time: Math.min(known.time, time), viewedAt: time,
+        id: known.id, path: file.path, suspicious: known.suspicious || isSuspicious(attachment) });
     }
   } else if (tool === 'solo_playtest' || tool === 'multiplayer_playtest') {
     if (args.action === 'start') state.playing = true;
@@ -422,6 +478,7 @@ export function assetEvidence(state) {
     details: [...state.assets.details].sort(),
     changes: [...state.assets.changes],
     screenshots: state.screenshots.filter(shot => shot.suspicious !== true).length,
+    screenshotEvidence: state.screenshots.map(shot => ({ ...shot })),
   };
 }
 
@@ -820,8 +877,19 @@ export function registerAuditTool(ctx, brain, evidence) {
                     details: list,
                     changes: { type: 'array', items: { type: 'number' } },
                     screenshots: { type: 'integer' },
+                    screenshotEvidence: {
+                      type: 'array',
+                      items: {
+                        type: 'object', additionalProperties: false,
+                        properties: {
+                          tool: { type: 'string' }, time: { type: 'number' }, viewedAt: { type: 'number' },
+                          id: { type: 'string' }, path: { type: 'string' }, suspicious: { type: 'boolean' },
+                        },
+                        required: ['tool', 'time', 'viewedAt', 'suspicious'],
+                      },
+                    },
                   },
-                  required: ['searches', 'thumbnails', 'details', 'changes', 'screenshots'],
+                  required: ['searches', 'thumbnails', 'details', 'changes', 'screenshots', 'screenshotEvidence'],
                 },
               },
               required: ['id', 'name', 'parent', 'state', 'evidence', 'revision', 'revisionPinned', 'contractValid',
@@ -845,7 +913,7 @@ export function registerAuditTool(ctx, brain, evidence) {
       }
       const empty = { revision: '', revisionPinned: false, contractValid: false, contractProblems: [], readOnly: false,
         required: [], loaded: [], shadowed: [], missing: [],
-        assets: { searches: [], thumbnails: [], details: [], changes: [], screenshots: 0 } };
+        assets: { searches: [], thumbnails: [], details: [], changes: [], screenshots: 0, screenshotEvidence: [] } };
       return {
         pinnedRevision: brain.commit,
         workers: records.map(record => ({

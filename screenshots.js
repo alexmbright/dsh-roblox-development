@@ -8,7 +8,7 @@
  * by id. Ids travel in prompts, send_message, reports and VISUAL_GATE.md like any other text.
  * @module @alexturbo/dsh-roblox-development/screenshots
  */
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, utimesSync } from 'node:fs';
 import path from 'node:path';
 
 export const CAPTURE_TOOLS = ['screen_capture', 'capture_screenshot', 'capture_device_matrix'];
@@ -43,7 +43,9 @@ const storedLine = (label, attachment) => `${STORED_MARKER} ${JSON.stringify({ i
 
 /** A capture that is probably not the real viewport: tiny, or a reported fallback path. */
 export const isSuspicious = (attachment, fallback = false) => fallback
-  || ((attachment?.width ?? 0) <= 256 && (attachment?.height ?? 0) <= 256);
+  || !Number.isFinite(attachment?.width) || !Number.isFinite(attachment?.height)
+  || attachment.width <= 0 || attachment.height <= 0
+  || (attachment.width <= 256 && attachment.height <= 256);
 
 /**
  * Captures recorded in one session log, oldest first.
@@ -56,17 +58,19 @@ export function capturesIn(session, agent = '') {
   for (const event of eventsOf(session)) {
     const data = event?.data;
     if (event?.type === 'tool/call' && CAPTURE_TOOLS.includes(baseName(data?.name))) {
-      pending.set(data.callId, { tool: baseName(data.name), server: /^mcp__(.+)__[^_]/.exec(data.name ?? '')?.[1] ?? '' });
+      pending.set(data.callId, { time: event.time ?? 0, tool: baseName(data.name), server: /^mcp__(.+)__[^_]/.exec(data.name ?? '')?.[1] ?? '' });
     } else if (event?.type === 'tool/result' && pending.has(data?.message?.toolCallId)) {
-      const { tool, server } = pending.get(data.message.toolCallId);
+      const { tool, server, time } = pending.get(data.message.toolCallId);
       pending.delete(data.message.toolCallId);
       if (data.message.isError === true) continue;
       let label = '';
-      let fallback = false;
+      // Fallback metadata applies to the whole result, including images/markers that precede it.
+      const fallback = (data.message.content ?? []).some(block => block?.type === 'text'
+        && /"studioFastPathUnavailable"\s*:\s*true/.test(block.text ?? ''));
       const push = (attachment, stored = false) => out.push({
         id: captureId(attachment.attachmentId),
         agent, tool, server, label,
-        time: event.time ?? 0,
+        time,
         attachment,
         stored,
         suspicious: isSuspicious(attachment, fallback),
@@ -75,7 +79,6 @@ export function capturesIn(session, agent = '') {
         if (block?.type === 'text') {
           const text = block.text ?? '';
           label = /capture_device_matrix \d+\/\d+ ([^:]+):/.exec(text)?.[1]?.trim() ?? label;
-          if (/"studioFastPathUnavailable"\s*:\s*true/.test(text)) fallback = true;
           for (const line of text.split('\n')) {
             if (!line.startsWith(STORED_MARKER)) continue;
             try {
@@ -181,7 +184,11 @@ export async function collectTreeById(ctx, rootId, rootName = 'lead', signal) {
     }
   }
   const unique = new Map();
-  for (const capture of captures) if (!unique.has(capture.id)) unique.set(capture.id, capture);
+  for (const capture of captures) {
+    const previous = unique.get(capture.id);
+    if (!previous || capture.time > previous.time) unique.set(capture.id, capture);
+    else if (capture.time === previous.time && capture.suspicious) previous.suspicious = true;
+  }
   return { captures: [...unique.values()].sort((a, b) => b.time - a.time), unreadable };
 }
 
@@ -195,6 +202,7 @@ const hostPath = (ctx, attachment) => {
 
 export const describe = (ctx, capture) => ({
   id: capture.id,
+  attachmentId: capture.attachment.attachmentId,
   agent: capture.agent,
   tool: capture.tool,
   server: capture.server ?? '',
@@ -296,6 +304,8 @@ export function registerScreenshotTool(ctx, projectRoot) {
         const label = capture.label ? `-${capture.label.replace(/[^A-Za-z0-9-]+/g, '-').toLowerCase()}` : '';
         const target = path.join(dir, `${capture.id}${label}.${extensionOf(capture.attachment.mediaType)}`);
         copyFileSync(source, target);
+        // Exporting an old image must not turn it into a newly captured screenshot.
+        if (Number.isFinite(capture.time) && capture.time > 0) utimesSync(target, capture.time / 1000, capture.time / 1000);
         files.push(path.relative(root, target));
       }
       return { exported: files, ...notes };

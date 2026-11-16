@@ -26,8 +26,9 @@ const callAndResult = (name, args, content, { time = T0, ok = true, turn = 1 } =
 };
 const image = [{ type: 'image', attachment: { attachmentId: 'a', mediaType: 'image/png', bytes: 1, width: 1280, height: 720 } }];
 const tinyImage = [{ type: 'image', attachment: { attachmentId: 'b', mediaType: 'image/png', bytes: 1, width: 256, height: 256 } }];
-const shot = (time, tool = 'mcp__robloxstudio__capture_screenshot') => callAndResult(tool, {}, [{ type: 'text', text: '{}' }, ...image], { time });
-const dispatch = (name, prompt, route, { time = T0, turn = 1 } = {}) => callAndResult('subagent', { prompt, ...route }, [{ type: 'text', text: `started subagent ${name}` }], { time, turn });
+const shot = (time, tool = 'mcp__robloxstudio__capture_screenshot') => callAndResult(tool, {}, [{ type: 'text', text: '{}' },
+  { type: 'image', attachment: { ...image[0].attachment, attachmentId: `shot-${time}` } }], { time });
+const dispatch = (name, prompt, route, { time = T0 + 10_000, turn = 1 } = {}) => callAndResult('subagent', { prompt, ...route }, [{ type: 'text', text: `started subagent ${name}` }], { time, turn });
 
 const VISUAL_ROUTE = { provider: 'codex', model: 'gpt-6.1-terra', reasoning_effort: 'medium' };
 const IMPL_ROUTE = { provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' };
@@ -50,6 +51,9 @@ Screenshots:
 - [x] palette
 - [x] no placeholder primitives
 - [x] nothing clipped
+
+## Asset sourcing
+Not applicable: UI-only layout and typography changes; no art pieces added or replaced.
 `;
 
 function project(gate = PASS_GATE, { gateTime = T0 + 60_000, clientTime = T0 } = {}) {
@@ -65,7 +69,10 @@ function project(gate = PASS_GATE, { gateTime = T0 + 60_000, clientTime = T0 } =
   return root;
 }
 
-function harness(root, { objective = 'Polish the main menu UI and scene art', rows = [], mode } = {}) {
+const reviewedRow = { name: 'reviewer', audit: { assets: { searches: [], thumbnails: [], details: [], changes: [], screenshots: 1,
+  screenshotEvidence: ['menu', 'hud', 'scene'].map(name => ({ time: T0 + 50_000, viewedAt: T0 + 50_000,
+    suspicious: false, path: `screenshots/${name}.png` })) } } };
+function harness(root, { objective = 'Polish the main menu UI and scene art', rows = [reviewedRow], mode } = {}) {
   const ctx = { get: key => ({
     workingDirectory: { get: () => root },
     goals: { get: () => ({ objective }) },
@@ -110,7 +117,7 @@ test('trusting operator text does not count: only capture tools or read_image on
   ]);
   assert.match(guard(complete(session)).reason, /have not viewed a screenshot yourself/);
   const read = lead([...session.events, ...callAndResult('read_image', { file_path: 'screenshots/menu.png' }, image, { time: T0 + 120_000 })]);
-  assert.equal(guard(complete(read)), undefined, 'read_image on a captured file counts');
+  assert.match(guard(complete(read)).reason, /have not viewed a screenshot yourself/, 'a capture-looking filename without provenance does not count');
 });
 
 test('a screenshot older than the last client change does not count', () => {
@@ -238,7 +245,7 @@ test('visual work cannot be accepted without a visual review dispatched after it
   const impl = 'Role: implementer/standard\nBuild the main menu GUI in src/client.';
   const session = lead([...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE), ...dispatch('impl', impl, IMPL_ROUTE), ...shot(T0 + 100_000)]);
   assert.match(guard(complete(session)).reason, /no visual\/standard or visual\/expert review with capture ids was dispatched after the last visual work/);
-  const reviewed = lead([...session.events, ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)]);
+  const reviewed = lead([...session.events, ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE, { time: T0 + 20_000 })]);
   assert.equal(guard(complete(reviewed)), undefined);
 });
 
@@ -282,7 +289,7 @@ test('only the visual reviewer worker may write VISUAL_GATE.md', () => {
 
 /* Asset sourcing --------------------------------------------------------------------------- */
 
-const assetGate = piece => `${PASS_GATE}\n## Asset sourcing\n\n${piece}\n`;
+const assetGate = piece => `${PASS_GATE.replace(/Not applicable:.*\n/, '')}\n${piece}\n`;
 const QUERIES = 'Queries: "pine tree"; "stylized tree"; "low poly tree"; "forest pack"; "cartoon tree"; "tree model"';
 const searched = ['pine tree', 'stylized tree', 'low poly tree', 'forest pack', 'cartoon tree', 'tree model']
   .flatMap(query => callAndResult('mcp__robloxstudio__search_assets', { assetType: 'Model', query }, [{ type: 'text', text: '[]' }]));
@@ -293,6 +300,7 @@ const looked = id => [
 
 test('primitive final art needs 6 queries, viewed candidates and real rejection reasons', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'asset-'));
+  mkdirSync(path.join(root, 'src/client'), { recursive: true });
   const write = text => {
     mkdirSync(path.join(root, 'docs/x'), { recursive: true });
     writeFileSync(path.join(root, 'docs/x/VISUAL_GATE.md'), text);
@@ -322,7 +330,7 @@ test('claimed asset evidence must match the asset tool calls in the session logs
   assert.match(denial.reason, /queries never run with search_assets/);
   assert.match(denial.reason, /candidate 2222222: no get_asset_thumbnail call in any log/);
   const rows = [{ name: 'artist', audit: { assets: { searches: searched.filter(e => e.type === 'tool/call').map(e => JSON.parse(e.data.arguments).query), thumbnails: ['2222222'], details: ['2222222'], changes: [], screenshots: 0 } } }];
-  assert.equal(harness(root, { rows }).guard(complete(lead(base))), undefined, 'worker logs carry the evidence');
+  assert.equal(harness(root, { rows: [...rows, reviewedRow] }).guard(complete(lead(base))), undefined, 'worker logs carry the evidence');
   assert.equal(harness(root).guard(complete(lead([...searched, ...looked(2222222), ...base]))), undefined, 'or the lead\'s own log');
 });
 
