@@ -40,7 +40,7 @@ export const RULES = {
   ASSET_QUERIES: `primitive final art: at least ${MIN_QUERIES} distinct search_assets queries`,
   ASSET_CANDIDATES: 'primitive final art: shortlisted candidates with rejection reasons',
   ASSET_THUMBNAIL: 'every candidate: thumbnail viewed (get_asset_thumbnail)',
-  ASSET_DETAILS: 'every candidate: details read (get_asset_details)',
+  ASSET_DETAILS: 'every candidate: details read (get_asset_details, or a 2xx Assets API GET /assets/v1/assets/<id> for own private uploads)',
   ASSET_REJECT_REASON: 'a rejection gives a reason beyond scripts, triangles, pivot or scale (all fixable)',
   ASSET_REJECT_IN_SCENE: 'a rejected candidate was seen in the scene first',
   ASSET_KEPT_RECORD: 'a kept asset records creator and price',

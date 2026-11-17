@@ -334,6 +334,31 @@ test('claimed asset evidence must match the asset tool calls in the session logs
   assert.equal(harness(root).guard(complete(lead([...searched, ...looked(2222222), ...base]))), undefined, 'or the lead\'s own log');
 });
 
+test('a successful Assets API read counts as the details lookup for own private uploads', () => {
+  const own = '94578467400759';
+  const assetsApi = (endpoint, text, { method = 'GET', ok = true } = {}) => callAndResult('mcp__Roblox_Studio__open_cloud_invoke',
+    { method, endpoint, scopes: ['asset:read'] }, [{ type: 'text', text }], { ok });
+  const body = id => `{"path":"assets/${id}","assetId":"${id}","assetType":"Model","creationContext":{"creator":{"groupId":"421538685"}},"moderationResult":{"moderationState":"Approved"}}`;
+  const detailsOf = events => sessionState(lead(events), loadBrain()).assets.details;
+  const good = assetsApi(`/assets/v1/assets/${own}`, `GET https://apis.roblox.com/assets/v1/assets/${own} -> 200 OK\n\n${body(own)}`);
+  assert.deepEqual([...detailsOf(good)], [own]);
+  // The Creator Store 404 does not count; neither do failures, other ids, other endpoints or writes.
+  assert.equal(detailsOf(assetsApi(`/assets/v1/assets/${own}`, `GET https://apis.roblox.com/assets/v1/assets/${own} -> 404 Not Found\n\n{}`)).size, 0);
+  assert.equal(detailsOf(assetsApi(`/assets/v1/assets/${own}`, `GET x -> 200 OK\n\n${body(own)}`, { ok: false })).size, 0);
+  assert.equal(detailsOf(assetsApi(`/assets/v1/assets/${own}`, `GET x -> 200 OK\n\n${body('1111111')}`)).size, 0);
+  assert.equal(detailsOf(assetsApi(`/assets/v1/assets/${own}/versions`, `GET x -> 200 OK\n\n${body(own)}`)).size, 0);
+  assert.equal(detailsOf(assetsApi(`/assets/v1/assets/${own}`, `PATCH x -> 200 OK\n\n${body(own)}`, { method: 'PATCH' })).size, 0);
+  assert.equal(detailsOf(assetsApi(`/assets/v1/assets/${own}`, 'GET x -> 200 OK\n\nnot json')).size, 0);
+
+  const piece = `### Piece: noodles\nFinal: ${own}\nCandidates:\n- Candidate: ${own} | thumbnail: yes | details: yes | status: kept | creator: own | price: n/a (own upload)`;
+  const root = project(assetGate(piece));
+  const base = [...shot(T0 + 100_000), ...dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)];
+  const thumb = callAndResult('mcp__robloxstudio__get_asset_thumbnail', { assetId: own }, image);
+  const notFound = callAndResult('mcp__robloxstudio__get_asset_details', { assetId: own }, [{ type: 'text', text: 'Open Cloud 404' }], { ok: false });
+  assert.match(harness(root).guard(complete(lead([...thumb, ...notFound, ...base]))).reason, /no get_asset_details call or successful Assets API read/);
+  assert.equal(harness(root).guard(complete(lead([...thumb, ...notFound, ...good, ...base]))), undefined);
+});
+
 test('asset work assignments must carry the sourcing rule', () => {
   const { guard } = harness(project());
   const bare = 'Role: implementer/standard\nFind trees on the Creator Store and insert_asset them.';

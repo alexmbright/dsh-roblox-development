@@ -163,7 +163,7 @@ export function assetEvidenceProblems(gates, evidence) {
           problems.push({ rule: 'ASSET_THUMBNAIL', text: `piece "${piece.name}" candidate ${candidate.id}: no get_asset_thumbnail call in any log` });
         }
         if (/^(?:yes|viewed|read|seen|true)$/i.test(candidate.fields.details ?? '') && !details.has(candidate.id)) {
-          problems.push({ rule: 'ASSET_DETAILS', text: `piece "${piece.name}" candidate ${candidate.id}: no get_asset_details call in any log` });
+          problems.push({ rule: 'ASSET_DETAILS', text: `piece "${piece.name}" candidate ${candidate.id}: no get_asset_details call or successful Assets API read (open_cloud_invoke GET /assets/v1/assets/<id>) in any log` });
         }
       }
     }

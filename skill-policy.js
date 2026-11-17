@@ -189,7 +189,30 @@ export const baseToolName = name => (typeof name === 'string' && name.startsWith
 export const SCREENSHOT_TOOLS = ['screen_capture', 'capture_screenshot', 'capture_device_matrix'];
 const TRACKED_TOOLS = new Set([...SCREENSHOT_TOOLS, 'read_image', 'solo_playtest', 'multiplayer_playtest', 'start_stop_play',
   'search_assets', 'search_asset', 'get_asset_thumbnail', 'get_asset_details', 'insert_asset', 'generate_model',
-  'roblox_screenshots']);
+  'roblox_screenshots', 'open_cloud_invoke']);
+/** Open Cloud Assets API metadata read: GET /assets/v1/assets/<id> (optional query string). */
+const ASSETS_API_GET = /^\/assets\/v1\/assets\/(\d{4,})(?:\?.*)?$/;
+
+/**
+ * Asset id whose details a successful Assets API read proves, or undefined. The Creator Store
+ * details lookup (get_asset_details) 404s for private own-group uploads, so a 2xx Assets API
+ * response whose body names the same asset counts as the details read for that asset.
+ */
+export function assetsApiDetailsId(args, content) {
+  if (String(args?.method ?? 'GET').toUpperCase() !== 'GET') return undefined;
+  const id = ASSETS_API_GET.exec(String(args?.endpoint ?? '').trim())?.[1];
+  if (id === undefined) return undefined;
+  const text = textOf(content);
+  const status = /->\s*(\d{3})\b/.exec(text.split('\n', 1)[0] ?? '')?.[1];
+  if (status === undefined || !status.startsWith('2')) return undefined;
+  const body = /\{[\s\S]*\}/.exec(text)?.[0];
+  try {
+    const parsed = JSON.parse(body ?? '');
+    return String(parsed?.assetId ?? '') === id || parsed?.path === `assets/${id}` ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
 /** Capture-like filename hints only; naming is never evidence of capture provenance. */
 export const CAPTURED_FILE = /(?:^|[\\/])(?:screenshots?|captures?)[\\/]|screen[-_ ]?shot|screen[-_ ]?capture|capture|device[-_ ]?matrix/i;
 const ROLE_LINE = /^[ \t>*_-]*Role:[*_]*[ \t]*`?([a-z]+)\/(fast|standard|expert)\b/im;
@@ -395,6 +418,9 @@ function foldTracked(state, tool, args, content, time, session, callTime) {
     if (args.assetId !== undefined) state.assets.thumbnails.add(String(args.assetId));
   } else if (tool === 'get_asset_details') {
     if (args.assetId !== undefined) state.assets.details.add(String(args.assetId));
+  } else if (tool === 'open_cloud_invoke') {
+    const id = assetsApiDetailsId(args, content);
+    if (id !== undefined) state.assets.details.add(id);
   } else if (tool === 'insert_asset' || tool === 'generate_model') {
     state.assets.changes.push(time);
   }
