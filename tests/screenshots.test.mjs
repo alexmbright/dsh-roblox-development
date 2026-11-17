@@ -96,7 +96,7 @@ test('roblox_screenshots list, view and selective export', async () => {
 
   assert.equal(existsSync(path.join(root, 'screenshots')), false, 'nothing is written unless exported');
   const exported = await registered.execute({ action: 'export', ids: [newest] }, exec(agents.lead));
-  assert.deepEqual(exported.exported, [`screenshots/${newest}-phone.png`]);
+  assert.deepEqual(exported.exported, [path.join('screenshots', `${newest}-phone.png`)]);
   assert.equal(readFileSync(path.join(root, exported.exported[0]), 'utf8'), 'png!');
   await assert.rejects(registered.execute({ action: 'export', ids: [newest], dir: '../outside' }, exec(agents.lead)), /inside the project/);
   await assert.rejects(registered.execute({ action: 'view', ids: ['cap-nope000000'] }, exec(agents.lead)), /unknown capture id/);

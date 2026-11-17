@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { runTool } from '../toolrun.js';
 
 /** A ctx carrying a ready toolchain and a captured subprocess seam. */
@@ -41,7 +42,7 @@ test('a pinned tool runs with its exact executable and the session cwd', async (
   const result = await runTool(ctx, { tool: 'lune', args: ['run', 'check.luau'] }, exec);
   assert.equal(spawned.length, 1);
   assert.deepEqual(spawned[0].argv, ['/profile/roblox-toolchain/lune', 'run', 'check.luau']);
-  assert.equal(spawned[0].cwd, '/workspace');
+  assert.equal(spawned[0].cwd, path.resolve('/workspace'));
   assert.equal(result.tool, 'lune');
   assert.equal(result.exitCode, 0);
   assert.equal(result.signal, '');
@@ -52,7 +53,7 @@ test('a pinned tool runs with its exact executable and the session cwd', async (
 test('an explicit cwd inside the workspace is honoured', async () => {
   const { ctx, exec, spawned } = harness();
   await runTool(ctx, { tool: 'selene', args: ['check', 'src'], cwd: '/workspace/src' }, exec);
-  assert.equal(spawned[0].cwd, '/workspace/src');
+  assert.equal(spawned[0].cwd, path.resolve('/workspace/src'));
 });
 
 test('a cwd outside the session workspace is refused', async () => {
