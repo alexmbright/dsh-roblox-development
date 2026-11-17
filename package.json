@@ -58,7 +58,7 @@
     "tests/*.test.mjs"
   ],
   "dependencies": {
-    "@chrrxs/robloxstudio-mcp": "3.4.4"
+    "@chrrxs/robloxstudio-mcp": "3.5.0"
   },
   "engines": {
     "node": ">=22",
