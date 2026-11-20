@@ -28,6 +28,9 @@ window.__ModuleLoader__.load({
       const response = await fetch(endpointUrl(path), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        mode: 'same-origin',
+        redirect: 'error',
         body: JSON.stringify(body ?? {}),
         signal: AbortSignal.timeout(30000),
       });
@@ -113,10 +116,12 @@ window.__ModuleLoader__.load({
         setSaved(null);
         try {
           const kept = Object.fromEntries(Object.entries(descriptions).filter(([, text]) => typeof text === 'string' && text.trim() !== ''));
-          await post('write', { disabledCells, overrides, descriptions: kept });
+          const result = await post('write', { disabledCells, overrides, descriptions: kept });
           // Reload so the pickers, source labels and catalog reflect what was saved.
           await load();
-          setSaved('Saved. The guard applies this immediately.');
+          setSaved(result.applied?.applied === false
+            ? `Saved and applied to the guard. New models become dispatchable after DSH restarts (${result.applied.reason}).`
+            : 'Saved and applied. New models are dispatchable for new sessions now.');
         } catch (error) {
           setFailure(error);
         } finally {
@@ -224,9 +229,164 @@ window.__ModuleLoader__.load({
           'Pick the model and reasoning effort each role/tier dispatches, switch off the tiers this profile should not use, '
           + 'and describe what each tier is for. These choices are the only source of the routing matrix: '
           + 'a fresh install seeds them from your default model, and nothing is inherited from routes.json. '
-          + 'A newly chosen model becomes dispatchable for new sessions after DSH restarts; '
-          + 'an effort change applies as soon as it is saved.'),
+          + 'Changes apply as soon as they are saved: a newly chosen model is dispatchable for new sessions, '
+          + 'and sessions already running keep the models they started with.'),
         h(RoutingPanel));
+    }
+
+    /* ------------------------------------------------------------------------------------------ */
+    /* Open Cloud credentials section                                                              */
+    /* ------------------------------------------------------------------------------------------ */
+
+    const CLOUD = 'api/roblox-open-cloud';
+
+    /** POST one Open Cloud bridge endpoint; failures become an Error carrying the server's message. */
+    async function cloudPost(path, body) {
+      let url = `${CLOUD}/${path}`;
+      try { url = new URL(url, document.baseURI).toString(); } catch { /* keep the relative path */ }
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        mode: 'same-origin',
+        redirect: 'error',
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(30000),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        const error = new Error(data.message ?? `request failed with HTTP ${response.status}`);
+        error.code = data.code;
+        throw error;
+      }
+      return data;
+    }
+
+    const CLOUD_FIELDS = [
+      {
+        id: 'apiKey',
+        label: 'Open Cloud API key',
+        secret: true,
+        placeholder: 'Paste the key from Creator Hub',
+        help: 'Create it at create.roblox.com → Credentials. Scopes by feature: asset:read / asset:write (asset upload and details), '
+          + 'developer-product:read / write and game-pass:read / write (monetization), universe:write and place scopes (experience and place versions). '
+          + 'Grant only what you use and bind the key to the experiences you work on.',
+      },
+      {
+        id: 'creatorUserId',
+        label: 'Creator user ID',
+        secret: false,
+        placeholder: 'Optional, numeric',
+        help: 'Where uploaded assets are owned when they belong to you. Use this or the group ID.',
+      },
+      {
+        id: 'creatorGroupId',
+        label: 'Creator group ID',
+        secret: false,
+        placeholder: 'Optional, numeric',
+        help: 'Where uploaded assets are owned when they belong to a group. Use this or the user ID.',
+      },
+    ];
+
+    const SOURCE_LABELS = { stored: 'saved in DSH', file: 'saved in DSH', env: 'launch environment', project: 'project .env', home: 'home .env' };
+
+    /** One credential field: status, a write-only input, Save and Clear. */
+    function CloudField({ field, info, busy, onSave, onClear }) {
+      const [draft, setDraft] = useState('');
+      const configured = info?.configured === true;
+      const writable = info?.writable !== false;
+      const source = info?.source === undefined ? '' : (SOURCE_LABELS[info.source] ?? String(info.source));
+      return h('div', { style: tierBlock, 'data-roblox-open-cloud-field': field.id },
+        h('div', { style: { fontWeight: 600, fontSize: '13px' } }, field.label),
+        h('div', { style: { ...muted, display: 'flex', gap: '8px', flexWrap: 'wrap' }, role: 'status' },
+          h('span', null, configured ? `Set${source === '' ? '' : ` (${source})`}` : 'Not set')),
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+          h('input', {
+            // A secret field is a password input that refuses autofill and never echoes a saved value.
+            type: field.secret ? 'password' : 'text',
+            inputMode: field.secret ? undefined : 'numeric',
+            autoComplete: field.secret ? 'new-password' : 'off',
+            spellCheck: false,
+            'aria-label': field.label,
+            placeholder: configured ? 'Enter a new value to replace it' : field.placeholder,
+            value: draft,
+            disabled: busy || !writable,
+            onChange: event => setDraft(event.target.value),
+            style: { ...control, maxWidth: '360px' },
+          }),
+          h('button', {
+            type: 'button', style: button, disabled: busy || !writable || draft.trim() === '',
+            onClick: async () => { if (await onSave(field.id, draft)) setDraft(''); },
+          }, 'Save'),
+          h('button', {
+            type: 'button', style: button, disabled: busy || !writable || !configured,
+            onClick: () => onClear(field.id),
+          }, 'Clear')),
+        h('div', { style: muted }, field.help));
+    }
+
+    function CloudPanel() {
+      const [state, setState] = useState({ status: 'loading', fields: {} });
+      const [failure, setFailure] = useState(null);
+      const [notice_, setNotice] = useState(null);
+      const [busy, setBusy] = useState(false);
+
+      const apply_ = payload => setState({ status: 'ready', fields: payload.fields ?? {} });
+
+      const load = useCallback(async () => {
+        setFailure(null);
+        try {
+          apply_(await cloudPost('read'));
+        } catch (error) {
+          setFailure(error);
+          setState(current => ({ ...current, status: 'failed' }));
+        }
+      }, []);
+
+      useEffect(() => { load(); }, [load]);
+
+      const run = async (path, body, done) => {
+        setBusy(true);
+        setFailure(null);
+        setNotice(null);
+        try {
+          const payload = await cloudPost(path, body);
+          apply_(payload);
+          setNotice(`${done} An active robloxstudio connection refreshes automatically. This may take a moment.`);
+          return true;
+        } catch (error) {
+          setFailure(error);
+          return false;
+        } finally {
+          setBusy(false);
+        }
+      };
+      const save = (id, value) => run('write', { field: id, value }, 'Saved to DSH’s credential store.');
+      const clear = id => run('clear', { field: id }, 'Cleared.');
+
+      if (state.status === 'loading') return h('div', { style: muted }, 'Loading…');
+      if (state.status === 'failed') {
+        return h('div', { style: box },
+          h('div', { style: notice('error'), role: 'alert' }, `Open Cloud settings unavailable: ${failure?.message ?? 'unknown error'}`),
+          h('button', { type: 'button', style: button, onClick: load }, 'Retry'));
+      }
+      return h('div', { style: box, 'data-roblox-open-cloud': true },
+        ...CLOUD_FIELDS.map(field => h(CloudField, {
+          key: field.id, field, info: state.fields[field.id], busy, onSave: save, onClear: clear,
+        })),
+        failure === null ? null : h('div', { style: notice('error'), role: 'alert' }, failure.message),
+        notice_ === null ? null : h('div', { style: notice('ok'), role: 'status' }, notice_));
+    }
+
+    /** Settings page section for the Open Cloud credentials. */
+    function OpenCloudSection() {
+      return h('section', { 'data-roblox-open-cloud-section': true },
+        h('h3', { style: { margin: '0 0 4px', fontSize: '15px', fontWeight: 600 } }, 'Roblox Open Cloud'),
+        h('p', { style: { ...muted, margin: '0 0 8px' } },
+          'Lets the robloxstudio MCP server call Roblox Open Cloud: asset upload and generation, monetization, experience and place-version tools. '
+          + 'Values are saved in DSH’s credential store and used by the community MCP. The settings page does not show saved values. '
+          + 'The official Roblox_Studio server does not use them. Everything else works without a key.'),
+        h(CloudPanel));
     }
 
     /* ------------------------------------------------------------------------------------------ */
@@ -357,6 +517,12 @@ window.__ModuleLoader__.load({
           order: 25,
           label: 'Roblox routing',
         }, RoutingSection));
+        ctx.slots.inject('settings.section', () => ctx.slots.register({
+          name: 'settings.section',
+          id: 'roblox-open-cloud',
+          order: 26,
+          label: 'Roblox Open Cloud',
+        }, OpenCloudSection));
 
         // The right sidebar is optional in a composition: register the tab only where it exists.
         if (typeof ctx.inject !== 'function') return;

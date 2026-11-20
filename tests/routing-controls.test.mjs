@@ -27,11 +27,14 @@ async function resetState() {
   try { await (await import('node:fs/promises')).rm(path.join(sandbox, 'roblox-routing.json')); } catch {}
 }
 
-function harness() {
+function harness({ hmr } = {}) {
   const routes = [];
   const events = [];
+  const browserPeer = { principal: { kind: 'owner' } };
+  const connection = { browserPeer, admit: req => req.headers.cookie === 'synthetic-auth=ok'
+    ? { peer: browserPeer } : { rejection: 401 } };
   const ctx = {
-    get: key => (key === 'llm' ? llm : key === 'webServer' ? { register: route => { routes.push(route); return () => {}; } } : undefined),
+    get: key => key === 'connection' ? connection : (key === 'llm' ? llm : key === 'hmr' ? hmr : key === 'webServer' ? { register: route => { routes.push(route); return () => {}; } } : undefined),
     provide: () => {},
     emit: (name, payload) => events.push({ name, payload }),
   };
@@ -39,8 +42,8 @@ function harness() {
   return { routes, events };
 }
 
-/** Drive one route; `headers` defaults to a loopback host. */
-async function call(routes, pathname, body, headers = { host: '127.0.0.1:1' }) {
+/** Drive one route as the authenticated browser by default. */
+async function call(routes, pathname, body, headers = { host: '127.0.0.1:1', origin: 'http://127.0.0.1:1', cookie: 'synthetic-auth=ok' }) {
   const route = routes.find(candidate => candidate.path === `/api/roblox-controls${pathname}`);
   assert.ok(route, `route ${pathname} not registered`);
   const req = {
@@ -67,6 +70,13 @@ test('the bridge refuses a cross-origin page', async () => {
   const { routes } = harness();
   const response = await call(routes, '/read', {}, { host: '127.0.0.1:1', origin: 'http://evil.example' });
   assert.equal(response.status, 403);
+});
+
+test('unauthenticated callers cannot modify routing', async () => {
+  const { routes, events } = harness();
+  const response = await call(routes, '/write', {}, { host: '127.0.0.1:1', origin: 'http://127.0.0.1:1' });
+  assert.equal(response.status, 401);
+  assert.deepEqual(events, []);
 });
 
 test('read groups cells by role, one entry per tier', async () => {
@@ -179,4 +189,39 @@ test('a cell with no stored choice is reported unset and contributes no triple',
   const response = await call(routes, '/read', {});
   const cells = response.body.roles.flatMap(role => role.tiers);
   assert.ok(cells.some(cell => cell.source === 'unset' || cell.model !== ''), 'cells are either seeded or unset');
+});
+
+test('a saved routing change recomposes the profile so the model allow-list applies now', async () => {
+  await resetState();
+  const calls = [];
+  const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { calls.push('reconcile'); } };
+  const { routes } = harness({ hmr });
+  const response = await call(routes, '/write', { disabledCells: ['qa/fast'] });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.applied, { applied: true });
+  assert.deepEqual(calls, ['reconcile']);
+  // The recomposition runs after the state file is written, so the patch expression reads the new choice.
+  assert.deepEqual(JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8')).disabledCells, ['qa/fast']);
+});
+
+test('a rejected routing change does not recompose', async () => {
+  const calls = [];
+  const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { calls.push('reconcile'); } };
+  const { routes } = harness({ hmr });
+  const response = await call(routes, '/write', { disabledCells: ['nope/nope'] });
+  assert.equal(response.status, 400);
+  assert.deepEqual(calls, []);
+});
+
+test('a failing recomposition still saves routing and asks for a restart', async () => {
+  await resetState();
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { throw new Error('boom'); } };
+    const { routes } = harness({ hmr });
+    const response = await call(routes, '/write', { disabledCells: ['qa/fast'] });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.applied.applied, false);
+    assert.deepEqual(JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8')).disabledCells, ['qa/fast']);
+  } finally { console.warn = warn; }
 });

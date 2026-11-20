@@ -11,7 +11,7 @@ test('tracked release files exclude local artifacts and personal home paths', t 
   const files = git.stdout.split('\0').filter(Boolean);
   assert.ok(files.length > 0);
   for (const name of files) {
-    assert.doesNotMatch(name, /(^|\/)(?:\.env(?:\..*)?|\.cache|node_modules|\.agent-teams)(\/|$)|\.(?:tgz|log|pem|key)$/i);
+    assert.doesNotMatch(name, /(^|\/)(?:\.env(?:\..*)?|\.credentials\.ya?ml|\.npmrc|\.cache|node_modules|\.agent-teams)(\/|$)|\.(?:tgz|log|pem|key)$/i);
     const body = readFileSync(path.join(root, name), 'utf8');
     assert.doesNotMatch(body, /[A-Z]:[\\/]Users[\\/][\w.-]+|\/(?:Users|home)\/[\w.-]+/, name);
     assert.doesNotMatch(body, /-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----/, name);

@@ -14,7 +14,7 @@ Package: `@alexturbo/dsh-roblox-development` · Preset ID: `roblox` · Licence: 
 
 ## Requirements
 
-- DeepSeek Harness Desktop 0.2.2-rc.2 or 0.2.2-rc.3 (`engines.dsh`: `>=0.2.2-rc.2 <0.3.0`).
+- DeepSeek Harness Desktop 0.2.2-rc.5 or newer, below 0.3.0. The browser panels require the authenticated DSH browser connection.
 - Roblox Studio installed and signed in, with **Studio as MCP server** enabled in Assistant → Manage MCP Servers.
 - Your model-provider accounts signed into DSH. No subscriptions are bundled.
 - Network access once, for first-run toolchain provisioning.
@@ -40,11 +40,11 @@ Selene 0.32.0 and Luau 0.745 publish no ARM64 Linux build and no Intel macOS bui
 **Fully quit DSH Desktop**, then in Terminal:
 
 ```sh
-# registry install — updates in place from the Installed tab
-dsh plugin --profile desktop add "@alexturbo/dsh-roblox-development"
-
-# or pin an exact Git commit through DSH's Git installer
+# install from the GitHub repository
 dsh plugin --profile desktop add "github:alexmbright/dsh-roblox-development"
+
+# or install the version currently published to npm
+dsh plugin --profile desktop add "@alexturbo/dsh-roblox-development"
 ```
 
 Use your actual profile name if it is not `desktop`. Reopen DSH and start a **new Roblox development session**; the installation is profile-wide and existing sessions keep their previous preset revision.
@@ -66,7 +66,7 @@ Routing lives in **Settings → Roblox routing**.
 - **First install seeds the matrix.** Every cell is set from your DSH default model, or the first connected model if none is set, and stored. Later releases never overwrite those choices.
 - **The panel is the only source of dispatch models.** `routes.json` supplies the role/tier structure, the purposes and the `dispatchGuard` rules — never a dispatchable model. Nothing is auto-substituted: a cell with no stored choice contributes no route rather than inheriting one.
 - **Each tier has its own reasoning effort picker**, listing the efforts the chosen model declares. An effort change applies as soon as it is saved; a saved effort the model no longer supports is shown as such and rejected on save.
-- **Changing a model to one outside the current allowlist takes effect for new sessions after DSH restarts**, because session model authorization is read at profile load.
+- **Routing changes apply on Save.** The routing matrix is used for the next dispatch; it does not change workers already running. Adding a model to the profile allowlist also requires a successful live profile reload, and new sessions pick up that allowlist. If live reload fails, the panel tells you to restart DSH.
 - **Off-matrix dispatch is refused** unless the caller records a `capacityFallback` reason, which is logged. Fork dispatch is always refused: a forked child inherits the lead model and cannot carry a tier.
 - **Reviewer independence is flagged.** The panel warns when reviewer cells share the implementer's provider, because final review must not come from the same provider.
 
@@ -178,12 +178,23 @@ npm test
 
 No build or install lifecycle scripts are needed. Local development installation goes through plugin_manager with the absolute directory (see the linked-checkout caveat above). `npm run setup` remains an optional maintainer utility; sessions never invoke it, and it does not change the installed skill pin.
 
-The committed patch resolves installed resources at runtime and contains no generated home paths. Keep caches, environment files, credentials, logs, game projects and session records out of Git and release attachments; automated checks are defence in depth, not a guarantee. The package is published publicly to npm (`private` unset, `publishConfig.access: public`).
+The committed patch resolves installed resources at runtime and contains no generated home paths. Keep caches, environment files, credentials, logs, game projects and session records out of Git and release attachments. GitHub Releases and the plugin index are available independently of npm; the install command without a Git source uses the version currently published to npm.
+
+## Open Cloud API key
+
+The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, monetization, experience and place-version tools) need a Roblox Open Cloud API key. Open **Settings → Roblox Open Cloud**, paste the key from Creator Hub (create.roblox.com → Credentials) and press Save. Optionally add a creator user ID or group ID, which asset uploads use as the owner.
+
+- Save writes to DSH's credential store, not the preset or routing configuration. The panel requires an authenticated local DSH browser session. It displays whether a value is set and where it comes from, without returning the key or a masked preview.
+- DSH supplies `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_USER_ID` and `ROBLOX_CREATOR_GROUP_ID` to the community `robloxstudio` MCP launcher, not the official `Roblox_Studio` server. The launcher removes these variables before the verified MCP starts, so its Studio and media helpers don't inherit them. Studio-only tools remain available without a key. This does not isolate secrets from software running under your OS account.
+- Save or Clear refreshes the active community MCP connection without reloading the profile. In-flight calls may be interrupted. Clear removes the saved copy; it doesn't remove a launch environment or `.env` fallback, or revoke the key in Roblox.
+- To verify read access, open a published experience in Studio and ask the agent to list developer products for the connected experience. Use a key scoped to that experience with `developer-product:read`. An empty list is a successful read; Save alone does not verify authorization or write access.
+- Give keys only the scopes they need, and never paste them into chat, commits, or release notes.
 
 ## Releases
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.5** — Require DSH 0.2.2-rc.5 and an authenticated browser for bundle panels. Restore preset startup without an Open Cloud key. Settings accepts credentials without exposing even a partial key, refreshes the community Studio MCP on Save or Clear, and keeps credentials out of its helpers' inherited environment.
 - **1.5.3** — `@chrrxs/robloxstudio-mcp` 3.5.0 (`capture_video` viewport recording with storyboard, WSL capture fixes); tests pass on Windows.
 - **1.5.2** — the visual gate accepts a successful Open Cloud Assets API read (`GET /assets/v1/assets/<id>`) as the details lookup for own private uploads, which the Creator Store details call 404s on.
 - **1.5.1** — stricter capture provenance, freshness and reviewer evidence; delayed-result and identical-pixel recapture fixes; runtime-aware visual reporting without unrelated audit/routing reminders; exact verdict, watched-path and asset-sourcing validation.

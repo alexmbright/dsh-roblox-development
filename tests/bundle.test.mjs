@@ -8,6 +8,7 @@ const text = p => readFile(path.join(root, p), 'utf8');
 const manifest = JSON.parse(await text('package.json'));
 const routes = JSON.parse(await text('routes.json'));
 const patch = await text('cordis.patch.yml');
+const cloudMcp = await text('open-cloud-mcp.js');
 const skill = await text('skills/roblox-tiered-workflow/SKILL.md');
 const refs = await Promise.all(['routing', 'teams', 'studio'].map(n => text(`skills/roblox-tiered-workflow/references/${n}.md`)));
 const selection = await text('skills/roblox-tiered-workflow/references/skill-selection.md');
@@ -33,14 +34,14 @@ test('package declares preset compatibility plus shared toolchain bootstrap', ()
   assert.equal((patch.match(/name: '@deepseek-ai\/dsh-agent-preset'/g) || []).length, 1);
   assert.doesNotMatch(patch, /dsh-(?:workflow|tool-workflow|agent-teams|llm)-/);
   assert.match(patch, /^- id: subagent-model-selection-settings\n  config:\n    enabled: true/m);
-  assert.equal((patch.match(/name: '@deepseek-ai\/dsh-mcp-client'/g)||[]).length, 2);
+  assert.equal((patch.match(/name: '@deepseek-ai\/dsh-mcp-client'/g)||[]).length, 1);
   assert.match(patch, /roblox_run_tool/);
   assert.match(patch, /serverName: Roblox_Studio/);
-  assert.match(patch, /serverName: robloxstudio/);
-  assert.match(patch, /resolve\('@chrrxs\/robloxstudio-mcp'\)[^]*?'--auto-install-plugin'/);
+  assert.match(cloudMcp, /serverName: 'robloxstudio'/);
+  assert.match(cloudMcp, /resolve\(packageName\), '--auto-install-plugin'/);
   assert.doesNotMatch(patch, /@latest|command: npx/);
   assert.doesNotMatch(patch, /\t|[A-Z]:[\\/]Users[\\/]|\/Users\/|\/home\//i);
-  assert.match(patch, /command: !!js process.execPath/);
+  assert.match(cloudMcp, /command: process.execPath/);
   assert.match(patch, /StudioMCP/);
 });
 
@@ -169,7 +170,7 @@ test('distribution list covers every authored resource and only intended runtime
   const patterns = manifest.files.map(p => new RegExp('^' + p.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'));
   for (const file of await walk()) {
     assert.ok(file === 'package.json' || file.startsWith('vendor/') || file.startsWith('toolchain/') || patterns.some(p => p.test(file)), `unlisted: ${file}`);
-    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'skill-policy.js', 'visual-policy.js', 'screenshots.js', 'screenshot-bridge.js', 'studio-ids.js', 'http-bridge.js', 'tools/check-visual-gate.mjs', 'coordination.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
+    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'skill-policy.js', 'visual-policy.js', 'screenshots.js', 'screenshot-bridge.js', 'studio-ids.js', 'http-bridge.js', 'open-cloud-bridge.js', 'open-cloud-mcp.js', 'open-cloud-bootstrap.mjs', 'apply-profile.js', 'tools/check-visual-gate.mjs', 'coordination.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
   }
   assert.match(await text('THIRD-PARTY-NOTICES.md'), /Copyright \(c\) 2026 TabooHarmony/);
 });

@@ -11,7 +11,7 @@
  */
 import { createReadStream } from 'node:fs';
 import { collectTreeById, describe } from './screenshots.js';
-import { readJson, writeJson, sameOrigin } from './http-bridge.js';
+import { readJson, writeJson, rejectBrowserRequest } from './http-bridge.js';
 
 export const PREFIX = '/api/roblox-screenshots';
 
@@ -42,10 +42,7 @@ export async function treeCaptures(ctx, sessionId, signal) {
 /** Build the bridge routes. */
 export function buildScreenshotRoutes(ctx) {
   const guard = handler => async (req, res) => {
-    if (!sameOrigin(req)) {
-      writeJson(res, 403, { ok: false, code: 'forbidden', message: 'requests must come from the local page' });
-      return;
-    }
+    if (rejectBrowserRequest(ctx, req, res)) return;
     try {
       await handler(req, res);
     } catch (error) {

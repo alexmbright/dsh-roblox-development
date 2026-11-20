@@ -17,8 +17,10 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { loadRoutes, routeKey } from './routing.js';
-import { readJson, writeJson, sameOrigin } from './http-bridge.js';
+import { readJson, writeJson, rejectBrowserRequest } from './http-bridge.js';
 import { mountScreenshotBridge } from './screenshot-bridge.js';
+import { mountOpenCloudBridge } from './open-cloud-bridge.js';
+import { applyProfileChange } from './apply-profile.js';
 
 const BRIDGE_PREFIX = '/api/roblox-controls';
 const ROUTE_FIELDS = ['provider', 'model', 'reasoning_effort'];
@@ -309,10 +311,7 @@ function loadState() {
 function buildRoutes(ctx) {
   const llm = () => ctx.get('llm');
   const post = handler => async (req, res) => {
-    if (!sameOrigin(req)) {
-      writeJson(res, 403, { ok: false, code: 'forbidden', message: 'requests must come from the local page' });
-      return;
-    }
+    if (rejectBrowserRequest(ctx, req, res)) return;
     if (req.method !== 'POST') { writeJson(res, 405, { ok: false, code: 'method-not-allowed', message: 'POST required' }); return; }
     try {
       await handler(req, res);
@@ -368,7 +367,10 @@ function buildRoutes(ctx) {
         current = candidate;
         const resolved = await recompute(llm());
         ctx.emit('roblox-routing/changed', snapshot());
-        writeJson(res, 200, { ok: true, config: snapshot(), ...resolved });
+        // The model allow-list is read by the profile patch, so recompose to make a newly chosen
+        // model dispatchable for new sessions now instead of after a restart.
+        const applied = await applyProfileChange(ctx);
+        writeJson(res, 200, { ok: true, applied, config: snapshot(), ...resolved });
       }),
     },
   ];
@@ -440,15 +442,24 @@ export function apply(ctx, config) {
     console.warn(`[roblox-screenshots] bridge unavailable: ${error?.message ?? error}`);
   }
 
+  // The Open Cloud settings section's bridge rides the same row; it only talks to the credential store.
+  let dropOpenCloud;
+  try {
+    dropOpenCloud = mountOpenCloudBridge(ctx);
+  } catch (error) {
+    console.warn(`[roblox-open-cloud] bridge unavailable: ${error?.message ?? error}`);
+  }
+  const dropExtras = () => { dropScreenshots?.(); dropOpenCloud?.(); };
+
   const server = ctx.get('webServer');
   if (typeof ctx.inject === 'function') {
     // The carrier is optional: a headless composition still owns and publishes routing state.
     ctx.inject(['webServer'], sctx => sctx.effect(() => mount(sctx.get('webServer')), 'roblox-routing: bridge'));
-    return dropScreenshots;
+    return dropExtras;
   }
-  if (server === undefined) return dropScreenshots;
+  if (server === undefined) return dropExtras;
   const dropRouting = mount(server);
-  return () => { dropRouting(); dropScreenshots?.(); };
+  return () => { dropRouting(); dropExtras(); };
 }
 
 /** Profile configuration: the same state, editable through the loader row as well. */

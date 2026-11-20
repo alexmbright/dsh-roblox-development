@@ -5,6 +5,9 @@ node_modules/
 *.tgz
 .env
 .env.*
+.credentials.yaml
+.credentials.yml
+.npmrc
 .DS_Store
 *.log
 *.pem

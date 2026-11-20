@@ -145,18 +145,7 @@
               reconnect:
                 enabled: false
           - id: mcp-robloxstudio
-            name: '@deepseek-ai/dsh-mcp-client'
-            config:
-              serverName: robloxstudio
-              transport: stdio
-              command: !!js process.execPath
-              args: !!js "[(() => { const m = process.getBuiltinModule('node:module'); const bases = [m.createRequire(baseUrl).resolve('@alexturbo/dsh-roblox-development/routes.json')]; const profile = process.env.DSH_PROFILE_DIR; if (typeof profile === 'string' && profile !== '') bases.push(m.getBuiltinModule('node:path').join(profile, 'package.json')); let last; for (const base of bases) { try { return m.createRequire(base).resolve('@chrrxs/robloxstudio-mcp'); } catch (error) { last = error; } } throw new Error('@chrrxs/robloxstudio-mcp is not installed for this bundle: run npm install in the bundle package or reinstall it with its dependencies (' + (last && last.code) + ')'); })(), '--auto-install-plugin']"
-              env:
-                ELECTRON_RUN_AS_NODE: '1'
-              toolCallTimeoutMs: 120000
-              failOnStartupError: false
-              reconnect:
-                enabled: false
+            name: '@alexturbo/dsh-roblox-development/open-cloud-mcp'
           - id: planning
             name: cordis:group
             group: true

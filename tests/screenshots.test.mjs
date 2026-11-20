@@ -220,7 +220,10 @@ test('the sidebar bridge lists a worker Session\'s whole tree and serves only it
   const { ctx, impl } = tree();
   assert.equal(await rootSessionOf(ctx, 'impl'), 'lead');
   assert.equal(await rootSessionOf(ctx, 'qa'), 'lead', 'settled worker resolved through its durable header');
-  const routes = Object.fromEntries(buildScreenshotRoutes(ctx).map(route => [route.path.split('/').pop(), route.handler]));
+  const browserPeer = { principal: { kind: 'owner' } };
+  const connection = { browserPeer, admit: req => req.headers.cookie === 'synthetic-auth=ok'
+    ? { peer: browserPeer } : { rejection: 401 } };
+  const routes = Object.fromEntries(buildScreenshotRoutes({ get: name => name === 'connection' ? connection : ctx.get(name) }).map(route => [route.path.split('/').pop(), route.handler]));
   const response = () => {
     const res = { status: 0, headers: {}, body: [], headersSent: false };
     res.writeHead = (status, headers) => { res.status = status; res.headers = headers; res.headersSent = true; };
@@ -232,7 +235,7 @@ test('the sidebar bridge lists a worker Session\'s whole tree and serves only it
   };
   const request = (method, url, body) => {
     const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body))];
-    return { method, url, headers: { host: '127.0.0.1:1234', origin: 'http://127.0.0.1:1234' }, async *[Symbol.asyncIterator]() { yield* chunks; } };
+    return { method, url, headers: { host: '127.0.0.1:1234', origin: 'http://127.0.0.1:1234', cookie: 'synthetic-auth=ok' }, async *[Symbol.asyncIterator]() { yield* chunks; } };
   };
   const listRes = response();
   await routes.list(request('POST', '/api/roblox-screenshots/list', { sessionId: impl.id }), listRes);
@@ -242,6 +245,12 @@ test('the sidebar bridge lists a worker Session\'s whole tree and serves only it
   const cross = response();
   await routes.list({ ...request('POST', '/x', { sessionId: 'lead' }), headers: { host: 'evil.example', origin: 'http://evil.example' } }, cross);
   assert.equal(cross.status, 403);
+  const unauthenticated = response();
+  const image = request('GET', '/api/roblox-screenshots/image');
+  delete image.headers.cookie;
+  delete image.headers.origin;
+  await routes.image(image, unauthenticated);
+  assert.equal(unauthenticated.status, 401);
   const missing = response();
   await routes.image(request('GET', `/api/roblox-screenshots/image?session=lead&id=cap-zzzzzzzzzz`), missing);
   assert.equal(missing.status, 404);

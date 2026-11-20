@@ -1,6 +1,6 @@
 {
   "name": "@alexturbo/dsh-roblox-development",
-  "version": "1.5.3",
+  "version": "1.5.5",
   "private": false,
   "type": "module",
   "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",
@@ -21,6 +21,7 @@
     "./workspace-runtime/icon": "./icon.svg",
     "./client": "./client.js",
     "./routing-controls": "./routing-controls.js",
+    "./open-cloud-mcp": "./open-cloud-mcp.js",
     "./toolrun": "./toolrun.js",
     "./tools/check-visual-gate.mjs": "./tools/check-visual-gate.mjs",
     "./docs/VISUAL_GATE.md": "./docs/smaller-launch/VISUAL_GATE.md"
@@ -28,6 +29,10 @@
   "files": [
     "index.js",
     "routing.js",
+    "open-cloud-mcp.js",
+    "open-cloud-bootstrap.mjs",
+    "open-cloud-bridge.js",
+    "apply-profile.js",
     "skill-policy.js",
     "visual-policy.js",
     "screenshots.js",
@@ -61,8 +66,8 @@
     "@chrrxs/robloxstudio-mcp": "3.5.0"
   },
   "engines": {
-    "node": ">=22",
-    "dsh": ">=0.2.2-rc.2 <0.3.0"
+    "node": "^22.15.0 || >=24.0.0",
+    "dsh": ">=0.2.2-rc.5 <0.3.0"
   },
   "repository": {
     "type": "git",

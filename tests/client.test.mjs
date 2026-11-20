@@ -54,7 +54,8 @@ test('the client registers a Roblox routing settings section', () => {
   assert.deepEqual(plugin.inject, ['slots']);
   const seen = [];
   plugin.apply({ slots: { inject: (slot, cb) => { seen.push(slot); cb?.(); }, register: () => () => {} } });
-  assert.deepEqual(seen, ['settings.section']);
+  // Routing and Open Cloud each register their own settings section.
+  assert.deepEqual(seen, ['settings.section', 'settings.section']);
 });
 
 test('the panel lays out one group per role with a tier row inside', () => {
@@ -147,4 +148,33 @@ test('the client registers a Roblox screenshots tab in the right sidebar when it
   assert.deepEqual(body.inject('session-1'), { sessionId: 'session-1' });
   assert.ok(seats.some(seat => seat?.name === 'sidebar.right.pane.tab.title' && seat.key === types[0].id));
   assert.doesNotThrow(() => plugin.apply({ slots }), 'compositions without a right sidebar still mount');
+});
+
+test('the client also registers a Roblox Open Cloud settings section with write-only fields', () => {
+  const ready = {
+    status: 'ready',
+    fields: { apiKey: { configured: true, source: 'stored', writable: true, masked: 'fixture-preview-should-not-render' }, creatorUserId: { configured: false, writable: true }, creatorGroupId: { configured: false, writable: true } },
+  };
+  // useState call order: CloudPanel (state, failure, notice, busy), then one draft per field.
+  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([ready, null, null, false, '', '', '']) : undefined));
+  const sections = [];
+  plugin.apply({ slots: { inject: (_slot, cb) => cb?.(), register: (options, component) => { sections.push({ options, component }); return () => {}; } } });
+  const cloud = sections.find(entry => entry.options.id === 'roblox-open-cloud');
+  assert.ok(cloud, 'open cloud section registered');
+  assert.equal(cloud.options.name, 'settings.section');
+  assert.ok(sections.some(entry => entry.options.id === 'roblox-routing'), 'routing section kept');
+
+  const nodes = walk({ type: cloud.component, props: {}, children: [] });
+  const inputs = nodes.filter(node => node.type === 'input');
+  assert.equal(inputs.length, 3);
+  const key = inputs.find(node => node.props['aria-label'] === 'Open Cloud API key');
+  assert.equal(key.props.type, 'password');
+  assert.equal(key.props.autoComplete, 'new-password');
+  assert.equal(key.props.value, '', 'a saved value is never put back into the field');
+  const renderedText = nodes.flatMap(node => node.children.filter(child => typeof child === 'string')).join('\n');
+  assert.doesNotMatch(renderedText, /Restart DSH|fixture-preview-should-not-render/);
+  const clearButtons = nodes.filter(node => node.type === 'button' && node.children.includes('Clear'));
+  assert.equal(clearButtons.length, 3);
+  assert.equal(clearButtons[0].props.disabled, false, 'a configured field can be cleared');
+  assert.equal(clearButtons[1].props.disabled, true, 'an unset field cannot');
 });
