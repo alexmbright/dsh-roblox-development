@@ -33,8 +33,10 @@ export function writeJson(res, status, body) {
 }
 
 /**
- * Require loopback authority and a matching Origin for mutations. Same-origin image GETs
- * can omit Origin. DSH's Connection separately checks the full origin and authenticates.
+ * Require loopback authority, refuse non-same-origin fetch metadata, and require any Origin
+ * to match Host. Origin may be absent: DSH Desktop forwards panel requests from its
+ * `dsh-app://` window without Origin or Sec-Fetch-Site and attaches its own owner cookie.
+ * Authentication is then decided by DSH's Connection (`admit`).
  * @param req - the incoming request.
  * @returns whether the request may be served.
  */
@@ -51,7 +53,7 @@ function sameOrigin(req) {
   const site = req.headers['sec-fetch-site'];
   if (site !== undefined && site !== 'same-origin') return false;
   const origin = req.headers.origin;
-  if (origin === undefined) return req.method === 'GET';
+  if (origin === undefined) return true;
   try {
     return new URL(origin).host === host;
   } catch {

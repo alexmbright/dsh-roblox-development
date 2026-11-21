@@ -194,6 +194,7 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.6** — Fix "requires the local DSH browser owner" in the Roblox routing, Open Cloud and screenshots panels on DSH Desktop, whose window forwards requests without an Origin header.
 - **1.5.5** — Require DSH 0.2.2-rc.5 and an authenticated browser for bundle panels. Restore preset startup without an Open Cloud key. Settings accepts credentials without exposing even a partial key, refreshes the community Studio MCP on Save or Clear, and keeps credentials out of its helpers' inherited environment.
 - **1.5.3** — `@chrrxs/robloxstudio-mcp` 3.5.0 (`capture_video` viewport recording with storyboard, WSL capture fixes); tests pass on Windows.
 - **1.5.2** — the visual gate accepts a successful Open Cloud Assets API read (`GET /assets/v1/assets/<id>`) as the details lookup for own private uploads, which the Creator Store details call 404s on.

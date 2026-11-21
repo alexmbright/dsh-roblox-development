@@ -192,7 +192,8 @@ test('signed browser owner admission is required before accessing the store', as
   const guarded = { describe: async () => { touches++; }, set: async () => { touches++; }, unset: async () => { touches++; } };
   const cases = [
     [connection, { cookie: undefined }, 401],
-    [connection, { origin: undefined }, 403],
+    [connection, { origin: 'http://127.0.0.1:1' }, 403],
+    [connection, { origin: 'null' }, 403],
     [connection, { 'sec-fetch-site': 'same-site' }, 403],
     [connection, { 'content-type': 'text/plain' }, 415],
     [{ browserPeer, admit: () => ({ rejection: 403 }) }, {}, 403],
@@ -209,4 +210,14 @@ test('signed browser owner admission is required before accessing the store', as
     }
   }
   assert.equal(touches, 0);
+});
+
+test('DSH Desktop forwarded requests (no Origin, no Sec-Fetch-Site) reach the store after admission', async () => {
+  // Desktop's forwardWebRequest strips origin/sec-fetch-site and injects its own Host cookie.
+  const store = fakeStore();
+  const routes = buildOpenCloudRoutes({ get: key => (key === 'credentials' ? store : key === 'connection' ? connection : undefined) });
+  for (const action of ['read', 'write', 'clear']) {
+    const result = await call(routes, action, { field: 'creatorUserId', value: '12345' }, { headers: { origin: undefined } });
+    assert.equal(result.status, 200, action);
+  }
 });
