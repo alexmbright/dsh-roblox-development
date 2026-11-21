@@ -1,1 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title"><title id="title">Tiered Studio workshop</title><rect x="2" y="2" width="60" height="60" rx="14" fill="#142b3b"/><path d="M12 45h40v7H12zm7-12h33v7H19zm7-12h26v7H26z" fill="#47c9bd"/><path d="m13 14 8-4 8 4-8 4zm0 2 7 4v8l-7-4zm9 4 7-4v8l-7 4z" fill="#ffcb72"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none" role="img" aria-labelledby="rbxdev_icon_title">
+  <title id="rbxdev_icon_title">Roblox development</title>
+  <defs>
+    <linearGradient id="rbxdev_icon_fill" x1="8" y1="7" x2="28" y2="29" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B93FF"/>
+      <stop offset="1" stop-color="#2F62E3"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(15 18 18)">
+    <!-- Tilted block -->
+    <rect x="8" y="8" width="20" height="20" rx="4.5" fill="url(#rbxdev_icon_fill)"/>
+    <!-- Code brackets in place of a hole -->
+    <path d="M14.6 14.2 11.4 18l3.2 3.8M21.4 14.2l3.2 3.8-3.2 3.8M19.1 13.4l-2.2 9.2" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
