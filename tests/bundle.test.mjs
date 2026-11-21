@@ -152,9 +152,10 @@ test('localized metadata and original icon have public exports', async () => {
   assert.equal(manifest.exports['./icon'], './icon.svg');
   const icon = await text('icon.svg');
   assert.match(icon, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
-  assert.match(icon, /viewBox="0 0 64 64"/);
+  assert.match(icon, /width="36" height="36" viewBox="0 0 36 36"/);
   assert.match(icon, /<title[^>]*>.+<\/title>/);
-  assert.doesNotMatch(icon, /<script|<image|href=|foreignObject/);
+  assert.doesNotMatch(icon, /<script|<image|<style|<text|href=|foreignObject|\son[a-z]+=/);
+  assert.doesNotMatch(icon, /<rect[^>]*\bwidth="36"/, 'Plugin Manager draws the tile; the icon must not');
   assert.ok(Buffer.byteLength(icon) < 256 * 1024);
 });
 
