@@ -63,7 +63,7 @@ Add that source in DSH's custom plugin indexes UI (enable the optional custom pl
 
 Routing lives in **Settings → Roblox routing**.
 
-- **First install seeds the matrix.** Every cell is set from your DSH default model, or the first connected model if none is set, and stored. Later releases never overwrite those choices.
+- **First install seeds the matrix with your main model.** Every cell is set to your DSH default (main) model, or the first connected model if none is set, and stored. Until then workers inherit the lead's model. The bundle ships no models of its own, and later releases never overwrite your choices.
 - **The panel is the only source of dispatch models.** `routes.json` supplies the role/tier structure, the purposes and the `dispatchGuard` rules — never a dispatchable model. Nothing is auto-substituted: a cell with no stored choice contributes no route rather than inheriting one.
 - **Each tier has its own reasoning effort picker**, listing the efforts the chosen model declares. An effort change applies as soon as it is saved; a saved effort the model no longer supports is shown as such and rejected on save.
 - **Routing changes apply on Save.** The routing matrix is used for the next dispatch; it does not change workers already running. Adding a model to the profile allowlist also requires a successful live profile reload, and new sessions pick up that allowlist. If live reload fails, the panel tells you to restart DSH.
@@ -194,6 +194,7 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.7** — The bundle no longer ships default worker models. A fresh install seeds every role/tier cell with your main model; `routes.json` carries only roles, tiers, purposes and dispatch rules, and nothing outside your panel choices is dispatchable.
 - **1.5.6** — Fix "requires the local DSH browser owner" in the Roblox routing, Open Cloud and screenshots panels on DSH Desktop, whose window forwards requests without an Origin header.
 - **1.5.5** — Require DSH 0.2.2-rc.5 and an authenticated browser for bundle panels. Restore preset startup without an Open Cloud key. Settings accepts credentials without exposing even a partial key, refreshes the community Studio MCP on Save or Clear, and keeps credentials out of its helpers' inherited environment.
 - **1.5.3** — `@chrrxs/robloxstudio-mcp` 3.5.0 (`capture_video` viewport recording with storyboard, WSL capture fixes); tests pass on Windows.

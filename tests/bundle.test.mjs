@@ -33,7 +33,11 @@ test('package declares preset compatibility plus shared toolchain bootstrap', ()
   assert.match(patch, /^ {8}name: Roblox development$/m);
   assert.equal((patch.match(/name: '@deepseek-ai\/dsh-agent-preset'/g) || []).length, 1);
   assert.doesNotMatch(patch, /dsh-(?:workflow|tool-workflow|agent-teams|llm)-/);
-  assert.match(patch, /^- id: subagent-model-selection-settings\n  config:\n    enabled: true/m);
+  assert.match(patch, /^- id: subagent-model-selection-settings\n(?:  #.*\n)*  config:\n    enabled: !!js/m);
+  // The allow-list comes only from the operator's saved panel choices; the bundle ships no models.
+  const selection = patch.slice(patch.indexOf('- id: subagent-model-selection-settings'), patch.indexOf('- insert:'));
+  assert.doesNotMatch(selection, /routes\.json|\.roles\b/);
+  assert.match(selection, /roblox-routing\.json/);
   assert.equal((patch.match(/name: '@deepseek-ai\/dsh-mcp-client'/g)||[]).length, 1);
   assert.match(patch, /roblox_run_tool/);
   assert.match(patch, /serverName: Roblox_Studio/);
@@ -59,27 +63,24 @@ test('standard tool subset retains explicit native spawn model selection', () =>
   assert.doesNotMatch(patch, /tool-plugin-manager|tool-schedule/);
 });
 
-test('role-aware matrix specifies exact approved routes and explicit efforts', () => {
+test('role-aware matrix ships structure and purposes only, never a model', () => {
   assert.equal(routes.runtimeRouter, false);
   assert.equal(routes.automaticModelSwitch, false);
   assert.equal(routes.requireDiscovery, true);
   assert.equal(routes.requireExplicitEffort, true);
-  const expected = {
-    planner: [['xiaomi/mimo-v2.6-pro/high'], ['claude/claude-sonnet-5-5/high'], ['claude/claude-opus-5-5/high']],
-    scout: [['deepseek-account/deepseek-flash/low'], ['xiaomi/mimo-v2.6-flash/high'], ['claude/claude-sonnet-5-5/high']],
-    implementer: [['xiaomi/mimo-v2.6-pro/high'], ['claude/claude-sonnet-5-5/high'], ['claude/claude-opus-5-5/high']],
-    reviewer: [['deepseek-account/deepseek-flash/high'], ['codex/gpt-6.1-sol/high'], ['codex/gpt-6-astra/high']],
-    qa: [['xiaomi/mimo-v2.6-flash/high'], ['xiaomi/mimo-v2.6-pro/high'], ['claude/claude-sonnet-5-5/high']],
-    studio: [['xiaomi/mimo-v2.6-flash/high'], ['xiaomi/mimo-v2.6-pro/high'], ['claude/claude-sonnet-5-5/high', 'claude/claude-opus-5-5/high']],
-    visual: [['deepseek-account/deepseek-flash/high'], ['codex/gpt-6.1-terra/medium'], ['claude/claude-sonnet-5-5/high', 'claude/claude-opus-5-5/high']]
-  };
-  assert.deepEqual(Object.keys(routes.roles), Object.keys(expected));
+  assert.deepEqual(Object.keys(routes.roles), ['planner', 'scout', 'implementer', 'reviewer', 'qa', 'studio', 'visual']);
   for (const [role, tiers] of Object.entries(routes.roles)) {
-    assert.deepEqual(Object.keys(tiers), ['fast', 'standard', 'expert']);
-    assert.deepEqual(Object.values(tiers).map(rs => rs.map(r => `${r.provider}/${r.model}/${r.reasoning_effort}`)), expected[role]);
+    assert.deepEqual(Object.keys(tiers), ['fast', 'standard', 'expert'], role);
+    for (const [tier, entries] of Object.entries(tiers)) {
+      assert.equal(entries.length, 1, `${role}/${tier}`);
+      const [entry] = entries;
+      for (const field of ['provider', 'model', 'reasoning_effort', 'provisional']) {
+        assert.equal(entry[field], undefined, `${role}/${tier} ships no ${field}`);
+      }
+      assert.ok(entry.purpose.length > 0, `${role}/${tier} documents its purpose`);
+    }
   }
-  assert.equal(routes.roles.implementer.fast[0].provisional, true);
-  assert.equal(routes.roles.visual.standard[0].provisional, true);
+  assert.doesNotMatch(JSON.stringify(routes.roles), /xiaomi|mimo|deepseek|claude|codex|gpt-/i);
   assert.match(routes.roles.reviewer.fast[0].restriction, /Preliminary only/);
   assert.deepEqual(routes.independentReview, {differentWorker: true, crossProvider: true, preliminaryIsApproval: false});
   assert.match(patch, /Captain uses the current session model/);

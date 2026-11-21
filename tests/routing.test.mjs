@@ -4,12 +4,22 @@ import { readFileSync } from 'node:fs';
 import {
   loadRoutes,
   loadPolicy,
+  policyFromTriples,
+  mainModelMatrix,
   evaluateDispatch,
   createGuard,
 } from '../routing.js';
 
 const routes = loadRoutes();
-const policy = loadPolicy(routes);
+// routes.json ships no models, so guard mechanics are exercised against a fixture matrix standing
+// in for what the Roblox routing panel publishes.
+const FIXTURE = [
+  { provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' },
+  { provider: 'codex', model: 'gpt-6.1-sol', reasoning_effort: 'high' },
+  { provider: 'deepseek-account', model: 'deepseek-flash', reasoning_effort: 'low' },
+  { provider: 'deepseek-account', model: 'deepseek-flash', reasoning_effort: 'high' },
+];
+const policy = policyFromTriples(routes, FIXTURE);
 
 /** One spawn dispatch carrying an explicit role/tier route. */
 const spawn = (args, name = policy.spawnTools[0]) => ({ name, arguments: args });
@@ -26,27 +36,35 @@ test('dispatchGuard policy block names the enforced delegation tools and fields'
   assert.equal(routes.automaticModelSwitch, false);
 });
 
-test('every routes.json role/tier triple passes the guard, matrix built from the file itself', () => {
-  const triples = [];
-  for (const tiers of Object.values(routes.roles)) {
-    for (const entries of Object.values(tiers)) {
-      for (const entry of entries) {
-        triples.push({ provider: entry.provider, model: entry.model, reasoning_effort: entry.reasoning_effort });
-      }
-    }
+test('routes.json ships no dispatchable route: every model comes from the panel', () => {
+  const cells = Object.values(routes.roles).flatMap(tiers => Object.values(tiers)).flat();
+  assert.equal(cells.length, 21, 'one documented entry per role/tier cell');
+  for (const entry of cells) {
+    for (const field of ['provider', 'model', 'reasoning_effort']) assert.equal(entry[field], undefined, field);
+    assert.ok(typeof entry.purpose === 'string' && entry.purpose !== '');
   }
-  assert.ok(triples.length >= 20, 'the full role/tier matrix feeds the guard');
-  for (const triple of triples) {
-    assert.equal(evaluateDispatch(spawn(triple), policy).kind, 'allow', JSON.stringify(triple));
-  }
-  const distinct = new Set(triples.map(t => `${t.provider}\0${t.model}\0${t.reasoning_effort}`));
-  assert.equal(distinct.size, policy.matrix.length, 'matrix deduplicates to exact distinct routes');
+  assert.deepEqual(loadPolicy(routes).matrix, []);
 });
 
-test('loadPolicy rejects a route missing its explicit effort', () => {
+test('every published triple passes the guard', () => {
+  for (const triple of FIXTURE) {
+    assert.equal(evaluateDispatch(spawn(triple), policy).kind, 'allow', JSON.stringify(triple));
+  }
+});
+
+test('loadPolicy rejects a partially specified route', () => {
   const broken = JSON.parse(JSON.stringify(routes));
-  delete broken.roles.planner.fast[0].reasoning_effort;
+  broken.roles.planner.fast[0] = { ...broken.roles.planner.fast[0], provider: 'claude', model: 'claude-sonnet-5-5' };
   assert.throws(() => loadPolicy(broken), /reasoning_effort/);
+});
+
+test('before the panel publishes, only the main model is dispatchable', () => {
+  const ctx = { get: name => (name === 'agentDefaultModel'
+    ? { currentSelection: () => ({ provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'max' }) }
+    : undefined) };
+  assert.deepEqual(mainModelMatrix(ctx), [{ provider: 'claude', model: 'claude-opus-5-5', reasoning_effort: 'max' }]);
+  assert.deepEqual(mainModelMatrix({ get: () => undefined }), [], 'no main model, nothing allowed');
+  assert.deepEqual(mainModelMatrix({ get: () => { throw new Error('unavailable'); } }), []);
 });
 
 test('dispatch without any route fields is denied with an actionable message', () => {
@@ -60,9 +78,9 @@ test('dispatch without any route fields is denied with an actionable message', (
 
 test('a partial route is denied and names exactly the missing fields', () => {
   for (const [given, missing] of [
-    [{ provider: 'xiaomi' }, 'model, reasoning_effort'],
-    [{ model: 'mimo-v2.6-pro' }, 'provider, reasoning_effort'],
-    [{ provider: 'xiaomi', model: 'mimo-v2.6-pro' }, 'reasoning_effort'],
+    [{ provider: 'claude' }, 'model, reasoning_effort'],
+    [{ model: 'claude-sonnet-5-5' }, 'provider, reasoning_effort'],
+    [{ provider: 'claude', model: 'claude-sonnet-5-5' }, 'reasoning_effort'],
     [{ reasoning_effort: 'high' }, 'provider, model'],
   ]) {
     const verdict = evaluateDispatch(spawn(given), policy);
@@ -73,16 +91,16 @@ test('a partial route is denied and names exactly the missing fields', () => {
 });
 
 test('empty route field values are denied like missing fields', () => {
-  const verdict = evaluateDispatch(spawn({ provider: 'xiaomi', model: '', reasoning_effort: 'high' }), policy);
+  const verdict = evaluateDispatch(spawn({ provider: 'claude', model: '', reasoning_effort: 'high' }), policy);
   assert.equal(verdict.kind, 'deny');
   assert.match(verdict.reason, /missing: model/);
 });
 
 test('an off-matrix triple is denied even when complete', () => {
-  const verdict = evaluateDispatch(spawn({ provider: 'xiaomi', model: 'mimo-v2.6-pro', reasoning_effort: 'medium' }), policy);
+  const verdict = evaluateDispatch(spawn({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'medium' }), policy);
   assert.equal(verdict.kind, 'deny');
   assert.equal(verdict.info.code, 'ROUTING_OFF_MATRIX');
-  assert.match(verdict.reason, /xiaomi\/mimo-v2\.6-pro/);
+  assert.match(verdict.reason, /claude\/claude-sonnet-5-5/);
   assert.match(verdict.reason, /capacityFallback/);
 });
 
@@ -113,7 +131,7 @@ test('an empty fallback marker is not an opt-in', () => {
 test('clean matrix dispatch logs nothing', () => {
   const lines = [];
   const guard = createGuard(policy, { log: line => lines.push(line) });
-  assert.equal(guard(spawn({ provider: 'xiaomi', model: 'mimo-v2.6-pro', reasoning_effort: 'high' })), undefined);
+  assert.equal(guard(spawn({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' })), undefined);
   assert.deepEqual(lines, []);
 });
 
@@ -122,7 +140,7 @@ test('fork dispatch is denied: it cannot carry a tier route', () => {
   assert.equal(verdict.kind, 'deny');
   assert.equal(verdict.info.code, 'ROUTING_FORK_UNSUPPORTED');
   assert.match(verdict.reason, /subagent tool/);
-  const withRoute = evaluateDispatch({ name: 'subagent_fork', arguments: { provider: 'xiaomi', model: 'mimo-v2.6-pro', reasoning_effort: 'high' } }, policy);
+  const withRoute = evaluateDispatch({ name: 'subagent_fork', arguments: { provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' } }, policy);
   assert.equal(withRoute.kind, 'deny', 'route fields cannot tier a fork child');
 });
 
@@ -153,5 +171,5 @@ test('the guard module resolves routes.json beside itself at runtime', () => {
   const raw = JSON.parse(readFileSync(new URL('../routes.json', import.meta.url), 'utf8'));
   assert.equal(raw.dispatchGuard.enforced, true);
   const reloaded = loadPolicy(raw);
-  assert.equal(reloaded.matrix.length, policy.matrix.length);
+  assert.deepEqual(reloaded.matrix, [], 'the shipped file contributes rules, never routes');
 });

@@ -48,25 +48,16 @@
     "planner": {
       "fast": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-pro",
-          "reasoning_effort": "high",
           "purpose": "Breaks an outcome into ordered work with acceptance checks; use before delegating implementation. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "claude",
-          "model": "claude-sonnet-5-5",
-          "reasoning_effort": "high",
           "purpose": "Breaks an outcome into ordered work with acceptance checks; use before delegating implementation. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "claude",
-          "model": "claude-opus-5-5",
-          "reasoning_effort": "high",
           "purpose": "Breaks an outcome into ordered work with acceptance checks; use before delegating implementation. Escalation for hard, risky or ambiguous work."
         }
       ]
@@ -74,25 +65,16 @@
     "scout": {
       "fast": [
         {
-          "provider": "deepseek-account",
-          "model": "deepseek-flash",
-          "reasoning_effort": "low",
           "purpose": "Reads existing code, docs and APIs so a decision rests on evidence instead of assumption. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-flash",
-          "reasoning_effort": "high",
           "purpose": "Reads existing code, docs and APIs so a decision rests on evidence instead of assumption. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "claude",
-          "model": "claude-sonnet-5-5",
-          "reasoning_effort": "high",
           "purpose": "Reads existing code, docs and APIs so a decision rests on evidence instead of assumption. Escalation for hard, risky or ambiguous work."
         }
       ]
@@ -100,27 +82,17 @@
     "implementer": {
       "fast": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-pro",
-          "reasoning_effort": "high",
-          "provisional": true,
           "restriction": "Bounded implementation only after discovery and project-specific validation.",
           "purpose": "Writes and debugs Luau inside owned files; the only role that edits source for a task. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "claude",
-          "model": "claude-sonnet-5-5",
-          "reasoning_effort": "high",
           "purpose": "Writes and debugs Luau inside owned files; the only role that edits source for a task. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "claude",
-          "model": "claude-opus-5-5",
-          "reasoning_effort": "high",
           "purpose": "Writes and debugs Luau inside owned files; the only role that edits source for a task. Escalation for hard, risky or ambiguous work."
         }
       ]
@@ -128,26 +100,17 @@
     "reviewer": {
       "fast": [
         {
-          "provider": "deepseek-account",
-          "model": "deepseek-flash",
-          "reasoning_effort": "high",
           "restriction": "Preliminary only; cannot provide final independent approval.",
           "purpose": "Independent correctness review of finished work; must be a different worker and provider from the implementer. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "codex",
-          "model": "gpt-6.1-sol",
-          "reasoning_effort": "high",
           "purpose": "Independent correctness review of finished work; must be a different worker and provider from the implementer. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "codex",
-          "model": "gpt-6-astra",
-          "reasoning_effort": "high",
           "purpose": "Independent correctness review of finished work; must be a different worker and provider from the implementer. Escalation for hard, risky or ambiguous work."
         }
       ]
@@ -155,25 +118,16 @@
     "qa": {
       "fast": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-flash",
-          "reasoning_effort": "high",
           "purpose": "Designs the checks and reasons about regression coverage; distinct from Studio execution. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-pro",
-          "reasoning_effort": "high",
           "purpose": "Designs the checks and reasons about regression coverage; distinct from Studio execution. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "claude",
-          "model": "claude-sonnet-5-5",
-          "reasoning_effort": "high",
           "purpose": "Designs the checks and reasons about regression coverage; distinct from Studio execution. Escalation for hard, risky or ambiguous work."
         }
       ]
@@ -181,32 +135,17 @@
     "studio": {
       "fast": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-flash",
-          "reasoning_effort": "high",
           "restriction": "Bounded Studio inspection, screenshots, logs and explicit test procedures; holds exclusive delegated control.",
           "purpose": "Operates Roblox Studio: inspection, logs, screenshots and explicit live test procedures. One operator at a time. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "xiaomi",
-          "model": "mimo-v2.6-pro",
-          "reasoning_effort": "high",
           "purpose": "Operates Roblox Studio: inspection, logs, screenshots and explicit live test procedures. One operator at a time. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "claude",
-          "model": "claude-sonnet-5-5",
-          "reasoning_effort": "high",
-          "purpose": "Operates Roblox Studio: inspection, logs, screenshots and explicit live test procedures. One operator at a time. Escalation for hard, risky or ambiguous work."
-        },
-        {
-          "provider": "claude",
-          "model": "claude-opus-5-5",
-          "reasoning_effort": "high",
           "purpose": "Operates Roblox Studio: inspection, logs, screenshots and explicit live test procedures. One operator at a time. Escalation for hard, risky or ambiguous work."
         }
       ]
@@ -214,33 +153,16 @@
     "visual": {
       "fast": [
         {
-          "provider": "deepseek-account",
-          "model": "deepseek-flash",
-          "reasoning_effort": "high",
           "purpose": "Art direction and visual judgement: GUI layout, lighting, VFX and readability. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "provider": "codex",
-          "model": "gpt-6.1-terra",
-          "reasoning_effort": "medium",
-          "provisional": true,
-          "restriction": "Discover exact route and validate visual task capability before use.",
           "purpose": "Art direction and visual judgement: GUI layout, lighting, VFX and readability. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "provider": "claude",
-          "model": "claude-sonnet-5-5",
-          "reasoning_effort": "high",
-          "purpose": "Art direction and visual judgement: GUI layout, lighting, VFX and readability. Escalation for hard, risky or ambiguous work."
-        },
-        {
-          "provider": "claude",
-          "model": "claude-opus-5-5",
-          "reasoning_effort": "high",
           "purpose": "Art direction and visual judgement: GUI layout, lighting, VFX and readability. Escalation for hard, risky or ambiguous work."
         }
       ]

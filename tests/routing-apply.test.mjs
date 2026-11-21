@@ -71,9 +71,25 @@ test('a coordinator may not block on a worker', async () => {
   assert.equal(blockingWaitDenial(other), undefined, 'unrelated tools are untouched');
 });
 
+const MAIN = { provider: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high' };
+const withMain = ctx => { ctx.get = name => (name === 'agentDefaultModel' ? { currentSelection: () => ({ ...MAIN }) } : undefined); return ctx; };
+
+test('without published routing state only the main model passes routing', () => {
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const { ctx, guards } = harness();
+    routing.apply(withMain(ctx), {});
+    const lead = { id: 'lead', session: { id: 'lead', header: {}, events: [] } };
+    const shipped = guards[0]({ name: 'subagent', arguments: { provider: 'xiaomi', model: 'mimo-v2.6-pro', reasoning_effort: 'high', prompt: 'x' }, agent: lead });
+    assert.equal(shipped?.info?.code, 'ROUTING_OFF_MATRIX', 'formerly shipped routes are not allowed');
+    const main = guards[0]({ name: 'subagent', arguments: { provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high', prompt: 'x' }, agent: lead });
+    assert.notEqual(main?.info?.code?.startsWith('ROUTING_'), true, 'the main model clears routing');
+  } finally { console.warn = warn; }
+});
+
 test('the mounted guard enforces skills after routing and registers the audit tool', () => {
   const { ctx, guards, registered } = harness();
-  routing.apply(ctx, {});
+  routing.apply(withMain(ctx), {});
   assert.ok(registered.some(definition => definition.name === 'roblox_skill_audit'));
   const session = { id: 'lead', header: {}, events: [] };
   const route = { provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' };

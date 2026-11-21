@@ -1,6 +1,6 @@
 {
   "name": "@alexturbo/dsh-roblox-development",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "private": false,
   "type": "module",
   "description": "Self-provisioning Roblox toolchain with shared pinned binaries, workspace-local routine state, offline skills and explicit worker routes.",

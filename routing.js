@@ -8,9 +8,10 @@
  * pre-execute policy and before the tool body, deny-only so no listener can
  * turn a denial back into permission).
  *
- * Policy comes from routes.json `dispatchGuard` plus the role/tier matrix in
- * `roles`: every worker dispatch must name an explicit provider, model and
- * reasoning_effort drawn from that matrix. Off-matrix dispatch survives only
+ * Policy comes from routes.json `dispatchGuard` plus the role/tier matrix the
+ * Roblox routing panel publishes (routes.json itself ships no models): every
+ * worker dispatch must name an explicit provider, model and reasoning_effort
+ * drawn from that matrix. Off-matrix dispatch survives only
  * through the recorded capacity-fallback opt-in, which is logged. Fork
  * dispatch is denied outright because forked children always inherit the
  * captain model and cannot carry a tier route. The guard never mutates a call,
@@ -59,6 +60,9 @@ export function loadPolicy(routes) {
   for (const [role, tiers] of Object.entries(routes.roles ?? {})) {
     for (const [tier, entries] of Object.entries(tiers ?? {})) {
       for (const entry of entries ?? []) {
+        // Shipped cells document structure and purpose only; the panel supplies every model.
+        // A cell that names no route field contributes nothing, a partial one is still an error.
+        if (requiredRouteFields.every(field => entry[field] === undefined)) continue;
         for (const field of requiredRouteFields) {
           if (typeof entry[field] !== 'string' || entry[field].length === 0) {
             throw new Error(`routes.json roles.${role}.${tier} route requires explicit ${field}`);
@@ -118,6 +122,25 @@ export function policyFromTriples(routes, list) {
   return { ...base, matrix };
 }
 
+/**
+ * The operator's main model as a one-route matrix, used until the panel state is published.
+ * @param ctx - registrant context; `agentDefaultModel` is read best-effort.
+ * @returns `[route]`, or `[]` when no main model is known.
+ */
+export function mainModelMatrix(ctx) {
+  let main;
+  try {
+    main = ctx?.get?.('agentDefaultModel')?.currentSelection?.();
+  } catch {
+    main = undefined;
+  }
+  if (typeof main?.provider !== 'string' || main.provider === '' || typeof main?.model !== 'string' || main.model === '') return [];
+  const effort = typeof main.reasoningEffort === 'string' && main.reasoningEffort !== '' ? main.reasoningEffort
+    : typeof main.reasoning_effort === 'string' && main.reasoning_effort !== '' ? main.reasoning_effort
+    : 'high';
+  return [{ provider: main.provider, model: main.model, reasoning_effort: effort }];
+}
+
 const DENY_INFO = name => ({ name: 'roblox-routing-guard', code: name });
 const deny = (reason, code) => ({ kind: 'deny', reason, info: { ...DENY_INFO(code), reason } });
 
@@ -132,7 +155,7 @@ export function evaluateDispatch(execution, policy) {
   if (policy.forkTools.includes(name)) {
     return deny(
       'subagent_fork children inherit the captain model and cannot carry a tier route. '
-      + 'Delegate with the subagent tool using provider, model and reasoning_effort from a routes.json role/tier.',
+      + 'Delegate with the subagent tool using provider, model and reasoning_effort from a roblox_routes role/tier.',
       'ROUTING_FORK_UNSUPPORTED');
   }
   if (!policy.spawnTools.includes(name)) return { kind: 'allow' };
@@ -427,20 +450,22 @@ export function apply(ctx, config) {
   /**
    * Compile the active policy. The state row publishes asynchronously, so an absent service or
    * an empty published list before its first pass means "not computed yet" and falls back to
-   * the shipped matrix. An empty list *with* published roles is the operator's own choice and
-   * is honoured, rather than silently re-allowing every shipped route.
+   * the operator's main model — the same model a fresh install seeds into every cell. routes.json
+   * ships no models, so nothing else is ever allowed on someone else's behalf. An empty list
+   * *with* published roles is the operator's own choice and is honoured.
    */
+  const notComputed = () => ({ ...loadPolicy(shippedRoutes()), matrix: mainModelMatrix(ctx) });
   const compile = () => {
     const holder = service();
-    if (typeof holder?.triples !== 'function') return loadPolicy(shippedRoutes());
+    if (typeof holder?.triples !== 'function') return notComputed();
     const published = holder.triples();
-    if (!Array.isArray(published)) return loadPolicy(shippedRoutes());
+    if (!Array.isArray(published)) return notComputed();
     if (published.length === 0) {
       const known = holder.roles?.() ?? [];
       if (Array.isArray(known) && known.length > 0) {
         return { ...loadPolicy(shippedRoutes()), matrix: [] };
       }
-      return loadPolicy(shippedRoutes());
+      return notComputed();
     }
     return policyFromTriples(shippedRoutes(), published);
   };
@@ -476,7 +501,7 @@ export function apply(ctx, config) {
     if (!warnedMissingService && typeof service()?.triples !== 'function') {
       warnedMissingService = true;
       console.warn('[roblox-routing-guard] routing state service not visible in this scope; '
-        + 'enforcing the shipped routes.json matrix. Settings edits will not apply.');
+        + 'allowing only the main model. Settings edits will not apply.');
     }
     return state;
   });
@@ -499,10 +524,8 @@ export function apply(ctx, config) {
 
   const roleRoutes = (role, tier) => {
     const roles = service()?.roles?.();
-    if (!Array.isArray(roles) || roles.length === 0) {
-      const shipped = shippedRoutes().roles?.[role]?.[tier];
-      return Array.isArray(shipped) ? shipped : undefined;
-    }
+    // Not published yet: skip the route match rather than inventing one.
+    if (!Array.isArray(roles) || roles.length === 0) return undefined;
     const cell = roles.find(entry => entry.role === role)?.tiers?.find(entry => entry.id === `${role}/${tier}` && entry.enabled !== false);
     return cell === undefined ? [] : [cell];
   };

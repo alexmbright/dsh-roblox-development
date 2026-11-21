@@ -1,27 +1,34 @@
 # Derived from the standard preset; tool setup and new-session route defaults are Host-owned.
 - id: subagent-model-selection-settings
+  # Only the models chosen in Settings -> Roblox routing are dispatchable; the bundle ships none.
+  # A fresh install has no saved choices until the panel seeds every cell with the main model and
+  # recomposes, so until then selection stays off and workers inherit the lead (main) model:
+  # DSH rejects an enabled selection with an empty allow-list.
   config:
-    enabled: true
+    enabled: !!js >-
+      (() => {
+        const fs = process.getBuiltinModule('node:fs');
+        const profile = process.env.DSH_PROFILE_DIR;
+        if (typeof profile !== 'string' || profile === '') return false;
+        try {
+          const state = JSON.parse(fs.readFileSync(profile + '/roblox-routing.json', 'utf8'));
+          return Object.values(state.overrides ?? {}).some(entry => entry && typeof entry.provider === 'string' && entry.provider !== '' && typeof entry.model === 'string' && entry.model !== '');
+        } catch (error) { return false; }
+      })()
     allowedModels: !!js >-
       (() => {
         const fs = process.getBuiltinModule('node:fs');
-        const file = process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@alexturbo/dsh-roblox-development/routes.json');
-        const roles = JSON.parse(fs.readFileSync(file, 'utf8')).roles;
-        const shipped = Object.values(roles).flatMap(role => Object.values(role).flat());
-        // Routing overrides chosen in Settings -> Roblox routing must also be dispatchable,
-        // otherwise a session rejects the very route the matrix advertises.
-        const overrides = [];
+        const chosen = [];
         const profile = process.env.DSH_PROFILE_DIR;
         if (typeof profile === 'string' && profile !== '') {
           try {
             const state = JSON.parse(fs.readFileSync(profile + '/roblox-routing.json', 'utf8'));
             for (const entry of Object.values(state.overrides ?? {})) {
-              if (entry && typeof entry.provider === 'string' && typeof entry.model === 'string') overrides.push(entry);
+              if (entry && typeof entry.provider === 'string' && entry.provider !== '' && typeof entry.model === 'string' && entry.model !== '') chosen.push(entry);
             }
-          } catch (error) { /* no saved state yet, or unreadable: shipped routes only */ }
+          } catch (error) { /* no saved state yet, or unreadable: nothing chosen */ }
         }
-        const all = [...shipped, ...overrides];
-        return [...new Map(all.map(route => [route.provider + '/' + route.model, { provider: route.provider, model: route.model }])).values()];
+        return [...new Map(chosen.map(route => [route.provider + '/' + route.model, { provider: route.provider, model: route.model }])).values()];
       })()
 - insert:
     - id: roblox-routing-controls

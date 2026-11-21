@@ -6,10 +6,9 @@
  * profile's routing state and publishes the *effective* matrix to that guard over the
  * `robloxRouting` service and a `roblox-routing/changed` event.
  *
- * A cell's model is, in order of precedence: the profile's explicit override, the model the
- * shipped routes.json assigns it when that provider and model are connected, or a connected
- * model substituted automatically. That last step is what keeps a freshly installed profile
- * usable before anyone edits anything.
+ * A cell's model is the profile's stored choice. routes.json ships no models: a fresh install
+ * seeds every cell with the operator's main model, which keeps it usable before anyone edits
+ * anything.
  * @module @alexturbo/dsh-roblox-development/routing-controls
  */
 
@@ -148,7 +147,11 @@ function ensureCells(ctx) {
     for (const cell of shippedCells()) {
       if (current.overrides[cell.id] === undefined) current.overrides[cell.id] = { ...chosen };
     }
-    saveState(current);
+    const saved = saveState(current);
+    // The profile's model allow-list is built from this file, and before the first seed it is
+    // empty (subagent model selection stays off). Recompose now so the seeded main model becomes
+    // dispatchable without a restart. Not awaited: it queues behind any reconcile in progress.
+    if (saved.ok) void applyProfileChange(ctx);
   })().catch(error => console.warn(`[roblox-routing] could not seed cell defaults: ${error?.message ?? error}`));
   return filling;
 }
@@ -188,7 +191,7 @@ async function catalog(llm) {
         efforts = declared.map(effort => effort.id);
         fallbackEffort = info?.reasoning?.defaultEffort;
       } catch {
-        // An unreadable model stays selectable; effort falls back to the shipped one.
+        // An unreadable model stays selectable; effort falls back to the stored one.
       }
       out.push({
         provider: provider.id,
@@ -216,7 +219,6 @@ function shippedCells() {
         id: `${role}/${tier}`,
         role,
         tier,
-        shipped: { provider: entry.provider, model: entry.model, reasoning_effort: entry.reasoning_effort },
         purpose: typeof entry.purpose === 'string' ? entry.purpose : '',
       });
     }
@@ -233,7 +235,7 @@ function effortFor(entry, wanted) {
   return entry.efforts[0];
 }
 
-/** Resolve the effective matrix from overrides, shipped intent and what is connected. */
+/** Resolve the effective matrix from stored choices and what is connected. */
 async function recompute(llm) {
   const models = await catalog(llm);
   const byKey = new Map(models.map(entry => [`${entry.provider}/${entry.model}`, entry]));
@@ -242,12 +244,8 @@ async function recompute(llm) {
 
   for (const [index, cell] of shippedCells().entries()) {
     const override = current.overrides[cell.id];
-    const shippedKey = `${cell.shipped.provider}/${cell.shipped.model}`;
-    // No automatic substitution. The matrix is exactly what the operator chose (override) or
-    // what routes.json ships — never a model picked by position in the catalog, which would
-    // silently dispatch something nobody selected and could change between reads.
-    // Only the stored choice counts. A cell without one is reported unset rather than being
-    // filled from routes.json, which would put a model in the matrix that nobody selected.
+    // Only the stored choice counts. A cell without one is reported unset: routes.json ships no
+    // models, and nothing is picked by position in the catalog.
     const chosen = override === undefined
       ? undefined
       : { provider: override.provider, model: override.model };
@@ -262,7 +260,6 @@ async function recompute(llm) {
       provider: chosen?.provider ?? '',
       model: chosen?.model ?? '',
       reasoning_effort: chosen?.reasoning_effort ?? '',
-      shipped: cell.shipped,
       source,
       connected,
       enabled,

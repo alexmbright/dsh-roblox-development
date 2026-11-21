@@ -27,14 +27,18 @@ async function resetState() {
   try { await (await import('node:fs/promises')).rm(path.join(sandbox, 'roblox-routing.json')); } catch {}
 }
 
-function harness({ hmr } = {}) {
+/** Let the asynchronous first-install seed (and its recompose) finish. */
+const settle = () => new Promise(resolve => setTimeout(resolve, 25));
+
+function harness({ hmr, main } = {}) {
   const routes = [];
   const events = [];
   const browserPeer = { principal: { kind: 'owner' } };
   const connection = { browserPeer, admit: req => req.headers.cookie === 'synthetic-auth=ok'
     ? { peer: browserPeer } : { rejection: 401 } };
+  const defaultModel = main === undefined ? undefined : { currentSelection: () => ({ ...main }) };
   const ctx = {
-    get: key => key === 'connection' ? connection : (key === 'llm' ? llm : key === 'hmr' ? hmr : key === 'webServer' ? { register: route => { routes.push(route); return () => {}; } } : undefined),
+    get: key => key === 'connection' ? connection : (key === 'llm' ? llm : key === 'hmr' ? hmr : key === 'agentDefaultModel' ? defaultModel : key === 'webServer' ? { register: route => { routes.push(route); return () => {}; } } : undefined),
     provide: () => {},
     emit: (name, payload) => events.push({ name, payload }),
   };
@@ -110,7 +114,7 @@ test('an unknown cell is rejected', async () => {
 test('an unconnected model override is rejected', async () => {
   const { routes } = harness();
   const response = await call(routes, '/write', {
-    overrides: { 'planner/fast': { provider: 'xiaomi', model: 'mimo-v2.6-pro', reasoning_effort: 'high' } },
+    overrides: { 'planner/fast': { provider: 'example', model: 'unconnected-model', reasoning_effort: 'high' } },
   });
   assert.equal(response.status, 400);
   assert.equal(response.body.code, 'model-rejected');
@@ -155,8 +159,9 @@ test('every cell starts on an explicitly stored choice, never a routes.json mode
   const { routes } = harness();
   const response = await call(routes, '/read', {});
   const roles = JSON.parse(await readFile(new URL('../routes.json', import.meta.url), 'utf8')).roles;
-  const shippedModels = new Set(Object.values(roles).flatMap(tiers => Object.values(tiers)).flat()
-    .map(entry => `${entry.provider}/${entry.model}`));
+  for (const entry of Object.values(roles).flatMap(tiers => Object.values(tiers)).flat()) {
+    for (const field of ['provider', 'model', 'reasoning_effort']) assert.equal(entry[field], undefined, `routes.json ships no ${field}`);
+  }
 
   const cells = response.body.roles.flatMap(role => role.tiers);
   assert.equal(cells.length, 21);
@@ -165,7 +170,7 @@ test('every cell starts on an explicitly stored choice, never a routes.json mode
     // First install seeds the operator's default selection (here the first connected model).
     assert.equal(cell.source, 'auto', `${cell.id} is seeded, not inherited`);
     assert.equal(`${cell.provider}/${cell.model}`, 'deepseek-account/deepseek-flash');
-    assert.ok(shippedModels.has(`${cell.provider}/${cell.model}`) || true);
+    assert.equal(cell.shipped, undefined, `${cell.id} exposes no shipped model`);
   }
   // The stored state covers every cell, so routes.json never supplies a model.
   const saved = JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8'));
@@ -196,6 +201,8 @@ test('a saved routing change recomposes the profile so the model allow-list appl
   const calls = [];
   const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { calls.push('reconcile'); } };
   const { routes } = harness({ hmr });
+  await settle();
+  calls.length = 0; // the first-install seed recomposes on its own; covered separately
   const response = await call(routes, '/write', { disabledCells: ['qa/fast'] });
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.applied, { applied: true });
@@ -208,6 +215,8 @@ test('a rejected routing change does not recompose', async () => {
   const calls = [];
   const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { calls.push('reconcile'); } };
   const { routes } = harness({ hmr });
+  await settle();
+  calls.length = 0;
   const response = await call(routes, '/write', { disabledCells: ['nope/nope'] });
   assert.equal(response.status, 400);
   assert.deepEqual(calls, []);
@@ -224,4 +233,27 @@ test('a failing recomposition still saves routing and asks for a restart', async
     assert.equal(response.body.applied.applied, false);
     assert.deepEqual(JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8')).disabledCells, ['qa/fast']);
   } finally { console.warn = warn; }
+});
+
+test('a fresh install puts the main model on every row and recomposes once', async () => {
+  await resetState();
+  const calls = [];
+  const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { calls.push('reconcile'); } };
+  const main = { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'max' };
+  const { routes } = harness({ hmr, main });
+  await settle();
+  assert.deepEqual(calls, ['reconcile'], 'the seeded allow-list applies without a restart');
+  const saved = JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8'));
+  assert.equal(Object.keys(saved.overrides).length, 21);
+  for (const [id, route] of Object.entries(saved.overrides)) {
+    assert.deepEqual(route, { provider: 'claude', model: 'claude-opus-5-5', reasoning_effort: 'max', auto: true }, id);
+  }
+  const response = await call(routes, '/read', {});
+  assert.deepEqual(response.body.triples, [{ provider: 'claude', model: 'claude-opus-5-5', reasoning_effort: 'max' }]);
+  // A later start with every row chosen does not seed or recompose again.
+  calls.length = 0;
+  harness({ hmr, main: { provider: 'deepseek-account', model: 'deepseek-flash', reasoningEffort: 'low' } });
+  await settle();
+  assert.deepEqual(calls, []);
+  assert.equal(JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8')).overrides['planner/fast'].model, 'claude-opus-5-5');
 });
