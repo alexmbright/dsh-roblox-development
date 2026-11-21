@@ -9,7 +9,8 @@ test('rc.5 compatibility and native delegation guidance remain explicit', async 
   const teams = await text('skills/roblox-tiered-workflow/references/teams.md');
   assert.doesNotMatch(patch + teams, /interrupt_agent/);
   assert.match(patch, /prior assistant claim is not tool-availability evidence/);
-  assert.match(patch, /Usually start with one or two workers/);
+  assert.match(patch, /Run every independent ready task at the same time/);
+  assert.doesNotMatch(patch + teams, /Usually start with one or two workers/);
   assert.doesNotMatch(patch + teams, /at most 2|measure before 3 or 4|Increase toward three or four only/);
   assert.match(patch, /provider: spawn/);
   assert.doesNotMatch(patch, /provider: fork/);

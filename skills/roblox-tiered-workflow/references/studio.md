@@ -20,7 +20,9 @@ A capture of 256×256 or smaller, or one that reports `studioFastPathUnavailable
 
 ## One operator, explicit handoff
 
-Captain designates one Studio operator by message, naming the worker/session, intended target, scope and next checks. Choose a qualified tier for the task; bounded screenshots/logs may use a cheaper operator. All participants cooperate: only the designated operator issues Studio calls, including inspection, scene changes and playtest lifecycle. Others send requests and consume timestamped snapshots with target identity.
+Captain designates one Studio operator by message, naming the worker/session, intended target, scope and next checks. Choose a qualified tier for the task; bounded screenshots/logs may use a cheaper operator. All participants cooperate: only the designated operator issues playtest lifecycle, scene changes and script writes. Outside a playtest, other workers may make read-only Studio calls (script source, properties, search) on the same target; during a playtest they send requests and consume timestamped snapshots with target identity.
+
+Studio turns are short. A worker that needs Studio does everything else first: it reads source, drafts exact edits, compiles and lints them with `roblox_run_tool`, and writes its test steps. Its Studio turn then only applies, reads back and checks. Captain never parks a worker "waiting for Studio" while offline work remains.
 
 To transfer, the outgoing operator settles calls, reports current mode, target IDs, completed actions, source/sync baseline and pending or unknown outcomes, then acknowledges the handoff. Captain names the next operator and sends that evidence. Reconcile timed-out actions by readback before retrying or transferring: a local timeout does not prove the remote action stopped. This procedure uses ordinary native tools and messages, not custom control APIs or a runtime lock.
 

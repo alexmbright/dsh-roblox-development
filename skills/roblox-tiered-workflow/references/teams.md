@@ -12,7 +12,7 @@ Captain coordinates substantive development rather than implementing by default.
 
 ## Useful concurrency
 
-Usually start with one or two workers. Add more when independent tasks are ready and provider capacity allows; judge concurrency by throughput and rework, not headcount. Split by independent contracts and paths. Review completed slices while unrelated implementation continues. Different models on one account need not have independent quota.
+Run every independent ready task at the same time. Queue a task behind another only when both edit the same script or need the same playtest, and name that conflict. If a provider rejects requests for capacity, move workers to other routes before you serialize them; judge concurrency by throughput and rework, not headcount. Split by independent contracts and paths. Review completed slices while unrelated implementation continues. Different models on one account need not have independent quota.
 
 Receive completion notifications rather than busy-polling. When only waiting remains, end the turn and let completion wake captain; a persisted goal carries the unfinished objective forward. Never call wait_agent after a dispatch: it blocks the operator from adding or redirecting tasks, and the completion notice already resumes the captain.
 

@@ -255,3 +255,24 @@ test('the sidebar bridge lists a worker Session\'s whole tree and serves only it
   await routes.image(request('GET', `/api/roblox-screenshots/image?session=lead&id=cap-zzzzzzzzzz`), missing);
   assert.equal(missing.status, 404);
 });
+
+test('the end-of-turn check sends back a reply that parks workers behind Studio', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'c-'));
+  const ctx = { get: key => (key === 'workingDirectory' ? { get: () => root } : undefined) };
+  let running = [{ name: 'pad-expert' }];
+  const evidence = { rows: () => [], view: () => ({ running, finished: [] }) };
+  const { turnStopping } = createVisualGuard({ ctx, brain, evidence, previews: 'off' });
+  const steered = [];
+  const reply = (turn, text) => [{ type: 'turn/start', data: { turn } }, { type: 'assistant/message', data: { turn, message: { content: [{ type: 'text', text }] } } }];
+  const lead = session('lead', reply(1, 'Studio can only be used by one worker at a time, so these go one after another.'));
+  const agent = { id: 'lead', session: lead, steer: message => steered.push(message) };
+  await turnStopping({ agent, turn: 1 });
+  assert.equal(steered.length, 1);
+  assert.match(steered[0].content[0].text, /offline part now/);
+  await turnStopping({ agent, turn: 1 });
+  assert.equal(steered.length, 1, 'once per turn');
+  running = [{ name: 'pad-expert' }, { name: 'mobile-shop-fix' }];
+  lead.events.push(...reply(2, 'These go one after another in Studio.'));
+  await turnStopping({ agent, turn: 2 });
+  assert.equal(steered.length, 1, 'no correction while several workers run');
+});

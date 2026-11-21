@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, isSkillGated, sessionState, parseRole, baseToolName } from './skill-policy.js';
-import { statusContext } from './coordination.js';
+import { statusContext, concurrencyCorrection } from './coordination.js';
 import {
   projectRoot, gateEnabled, dispatchDenial, gateFileEditDenial, playtestInsertDenial, completionDenial,
   evaluateGate, gateReport, gateStatusLine, allRules, finalReply, replyCorrections, isVisualWork,
@@ -389,8 +389,15 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
       // too. New captures still get their own preview reminder below.
       visualTurn = visualTurnOf(session, turn, full.gate.gates.map(item => path.join('docs', item.scope, 'VISUAL_GATE.md')));
     }
-    if (dispatched.length === 0 && gate === undefined && newCaptures.length === 0) return;
-    const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, visualTurn, lookedSinceChange, newCaptures });
+    const reply = finalReply(session, turn);
+    let running = 0;
+    try {
+      running = evidence?.view?.(session.id ?? agent.id)?.running?.length ?? 0;
+    } catch { /* no worker view: count none */ }
+    const concurrency = concurrencyCorrection({ reply, running });
+    if (dispatched.length === 0 && gate === undefined && newCaptures.length === 0 && concurrency === '') return;
+    const corrections = replyCorrections({ reply, dispatched, gate, visualTurn, lookedSinceChange, newCaptures });
+    if (concurrency !== '') corrections.push(concurrency);
     if (corrections.length === 0 || typeof agent.steer !== 'function') return;
     corrected.add(key);
     agent.steer(correctionMessage(corrections));
