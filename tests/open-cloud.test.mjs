@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Readable } from 'node:stream';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -139,7 +139,9 @@ test('the preset wires the optional adapter only into the community Studio serve
 });
 
 test('a missing dependency gives a plain error without consulting credential data', () => {
-  assert.throws(() => studioArgs(undefined, 'file:///nonexistent-roblox-bundle/package.json'), /reinstall Roblox development with its dependencies/);
+  // Build the URL from an absolute path: a bare file:///x URL has no drive letter and is not absolute on Windows.
+  const missingBundle = pathToFileURL(path.resolve('/nonexistent-roblox-bundle/package.json')).href;
+  assert.throws(() => studioArgs(undefined, missingBundle), /reinstall Roblox development with its dependencies/);
 });
 
 const { applyProfileChange } = await import('../apply-profile.js');
