@@ -58,19 +58,24 @@ test('explicit fixture args run unchanged with no credential templates or ambien
   const args = [fixture, '--fixture-option', 'fixture-value'];
   let result;
   let passedArgs;
+  const registered = [];
+  const realm = { plugin: (_, config) => ({ await: async () => {
+    if (config?.transport !== 'stdio') return;
+    passedArgs = config.args;
+    result = spawnSync(config.command, config.args, {
+      env: { ...testEnv(home), ...config.env }, encoding: 'utf8', timeout: 5000,
+    });
+  } }) };
+  realm.isolate = () => realm;
   const ctx = {
     get: name => name === 'loader' ? { import: async () => null, unwrapExports: () => null } : undefined,
-    isolate: () => ({ plugin: (_, config) => ({ await: async () => {
-      if (config?.transport !== 'stdio') return;
-      passedArgs = config.args;
-      result = spawnSync(config.command, config.args, {
-        env: { ...testEnv(home), ...config.env }, encoding: 'utf8', timeout: 5000,
-      });
-    } }) }),
+    isolate: () => realm,
+    tools: { register: definition => { registered.push(definition.name); return () => {}; } },
     on() {},
   };
   await apply(ctx, { args });
   assert.deepEqual(passedArgs, args);
+  assert.deepEqual(registered, ['roblox_studio_tools'], 'the on-demand Studio tool search is registered');
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), [['--fixture-option', 'fixture-value'], '', '', '']);
 });

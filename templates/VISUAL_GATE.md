@@ -1,4 +1,4 @@
-# Visual gate: smaller-launch
+# Visual gate: <scope>
 
 Written by the visual reviewer worker only. The coordinator never edits this file. Roblox mode checks it with its bundled `tools/check-visual-gate.mjs` (the single rule source; `--rules` prints every rule) and `roblox_visual_gate` shows the result.
 

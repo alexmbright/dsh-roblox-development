@@ -312,7 +312,7 @@ export function replyCorrections({ reply, dispatched = [], gate, visualTurn = fa
     const visualClaim = claimsVisualCompletion(reply);
     if (!gate.ok && (visualTurn || visualClaim) && !/visual gate FAILED/i.test(firstLine)) {
       out.push(`The visual gate is FAILED (${gate.problems.slice(0, 4).map(item => (typeof item === 'string' ? item : formatProblem(item))).join('; ')}). `
-        + 'Open the report with "visual gate FAILED" and the reasons; do not call the visuals done, good or ready.');
+        + 'Open the report with "visual gate FAILED" and say in plain words what is missing, not rule ids; do not call the visuals done, good or ready.');
     } else if (gate.ok && visualClaim && !lookedSinceChange) {
       out.push('You called the visuals done/good/ready without viewing a screenshot since the last change. A worker\'s rating is not '
         + 'evidence: view a capture yourself (roblox_screenshots view) before making that claim, or withdraw it.');
@@ -321,10 +321,15 @@ export function replyCorrections({ reply, dispatched = [], gate, visualTurn = fa
   return out;
 }
 
-/** One-line gate status for the lead's prompt, or '' when the gate does not apply. */
+/**
+ * One-line gate status for the lead's prompt, or '' when the gate does not apply or passes.
+ * A passing gate needs no line: repeating it every turn made the lead mention the gate in
+ * replies that had nothing to do with visual work.
+ */
 export function gateStatusLine(gate) {
-  if (gate === undefined) return '';
-  if (gate.ok) return 'Roblox visual gate: file checks PASS (completion also checks your screenshots and the reviewer; roblox_visual_gate shows everything).';
+  if (gate === undefined || gate.ok) return '';
   const rules = [...new Set(gate.problems.map(item => item.rule))].join(', ');
-  return `Roblox visual gate: FAILED on ${rules}. Mention it when you report on visual work; roblox_visual_gate lists each problem.`;
+  return `Roblox visual gate: FAILED on ${rules}. Do not mention the gate in replies about other work. `
+    + 'When you report on visual work, say in plain words what is missing (for example "the UI changed after the last visual review, '
+    + 'so it needs a new review"), not rule ids; roblox_visual_gate lists each problem.';
 }

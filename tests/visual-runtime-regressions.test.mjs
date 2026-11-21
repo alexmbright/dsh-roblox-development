@@ -96,3 +96,20 @@ test('natural language visual objectives remain gated without UI keywords', t =>
   }
   assert.equal(completionDenial({ ...f, objective: 'Fix the visual gate plugin and push', workers: [] }), undefined);
 });
+test('a new worker screenshot alone does not demand the gate opening, only the preview reminder', async t => {
+  const f = fixture(t);
+  const steered = [];
+  let captures = [];
+  const ctx = { get: key => key === 'workingDirectory' ? { get: () => f.root } : undefined };
+  const guard = createVisualGuard({ ctx, brain: loadBrain(), evidence: { rows: () => [] }, collect: async () => ({ captures }) });
+  const turn = (n, text) => [{ type: 'turn/start', data: { turn: n } },
+    { type: 'assistant/message', data: { turn: n, message: { content: [{ type: 'text', text }] } } }];
+  const agent = events => ({ id: 'lead', session: { id: 'lead', events }, steer: m => steered.push(m) });
+  await guard.turnStopping({ agent: agent(turn(1, 'Server data saved.')), turn: 1 });
+  captures = [{ id: 'cap-4444444444', time: Date.now(), suspicious: false }];
+  await guard.turnStopping({ agent: agent([...turn(1, 'Server data saved.'), ...turn(2, 'The DataStore retry works.')]), turn: 2 });
+  assert.equal(steered.length, 1);
+  const text = steered[0].content[0].text;
+  assert.match(text, /new screenshot/);
+  assert.doesNotMatch(text, /visual gate FAILED/);
+});

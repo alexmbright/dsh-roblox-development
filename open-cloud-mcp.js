@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { accessSync } from 'node:fs';
+import { createStudioToolSearch, deferredTools } from './studio-tool-search.js';
 
 export const NAMES = Object.freeze({
   apiKey: 'ROBLOX_OPEN_CLOUD_API_KEY',
@@ -45,8 +46,14 @@ export async function apply(ctx, config = {}) {
   const args = config.args ?? studioArgs(ctx.get('profileContext')?.dir);
   // This realm is unique even when old and new preset revisions coexist. Keep the bridge and
   // unrelated MCPs on the real provider; only this MCP can see the optional-value adapter.
-  const scoped = ctx.isolate('credentials');
+  // Most Studio tools load on demand (studio-tool-search.js); `toolSearch: false` restores the full set.
+  const search = config.toolSearch === false ? undefined : createStudioToolSearch({ serverName: 'robloxstudio' });
+  const scoped = search === undefined ? ctx.isolate('credentials') : ctx.isolate('credentials').isolate('tools');
   await scoped.plugin(optionalCredentials, () => ctx.get('credentials')).await();
+  if (search !== undefined) {
+    await scoped.plugin(deferredTools, { host: () => ctx.tools, state: search }).await();
+    ctx.tools.register(search.definition);
+  }
   // Stored changes are already broadcast by DSH. Also refresh if the provider itself activates
   // late or goes away; that lifecycle change need not emit per-reference events of its own.
   ctx.on('internal/service', name => {

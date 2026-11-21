@@ -142,7 +142,7 @@ The lead keeps you looking along with it: when workers have captured something n
 
 ### Visual quality gate
 
-Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` (copy [the template](docs/smaller-launch/VISUAL_GATE.md)), or when the `roblox-routing-guard` config sets `visualGate: on` (`off` disables it). When active, the runtime refuses:
+Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` (copy [the template](templates/VISUAL_GATE.md) and replace `<scope>` with your feature or release name), or when the `roblox-routing-guard` config sets `visualGate: on` (`off` disables it). When active, the runtime refuses:
 
 - any worker dispatch without a `Role: <role>/<tier>` line, or whose route belongs to a different cell;
 - a `visual/*` review without a capture id or image path, without `Verdict: PASS|FAIL` and a checklist, or without naming the gate file;
@@ -194,6 +194,7 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.8** — Lower token use. The community Studio MCP loads 14 core tools; the lead loads the rest on demand with `roblox_studio_tools` (about 14,000 fewer tokens per request; set `toolSearch: false` in the `mcp-robloxstudio` config to load all tools). The persona is shorter and asks for ASD-STE100 Simplified Technical English in operator messages. The visual-gate line appears only while the gate fails, in plain words. Fixes the route briefing, which never reached the lead's prompt. The visual-gate template moved to `templates/VISUAL_GATE.md`.
 - **1.5.7** — The bundle no longer ships default worker models. A fresh install seeds every role/tier cell with your main model; `routes.json` carries only roles, tiers, purposes and dispatch rules, and nothing outside your panel choices is dispatchable.
 - **1.5.6** — Fix "requires the local DSH browser owner" in the Roblox routing, Open Cloud and screenshots panels on DSH Desktop, whose window forwards requests without an Origin header.
 - **1.5.5** — Require DSH 0.2.2-rc.5 and an authenticated browser for bundle panels. Restore preset startup without an Open Cloud key. Settings accepts credentials without exposing even a partial key, refreshes the community Studio MCP on Save or Clear, and keeps credentials out of its helpers' inherited environment.

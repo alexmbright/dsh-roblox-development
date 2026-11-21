@@ -89,7 +89,8 @@ export const routeKey = route => `${route.provider}-${route.model}-${route.reaso
 
 /**
  * Compose the route briefing the lead reads: every enabled role/tier cell with the model it
- * actually dispatches and the purpose recorded for it.
+ * actually dispatches. Purposes stay in `roblox_routes`, which the lead calls before delegating,
+ * so they are not repeated in every request.
  * @param roles - Grouped role/tier view from the bundle's routing state.
  * @returns the briefing text, or undefined when nothing is enabled.
  */
@@ -98,8 +99,7 @@ export function routesBriefing(roles) {
   for (const role of roles ?? []) {
     for (const tier of role.tiers ?? []) {
       if (tier.enabled === false) continue;
-      const purpose = typeof tier.purpose === 'string' && tier.purpose !== '' ? `: ${tier.purpose}` : '';
-      lines.push(`- ${tier.id} → ${tier.provider}/${tier.model} at ${tier.reasoning_effort}${purpose}`);
+      lines.push(`- ${tier.id} → ${tier.provider}/${tier.model} at ${tier.reasoning_effort}`);
     }
   }
   if (lines.length === 0) return undefined;
@@ -385,7 +385,9 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
       gate = full;
       const lastShot = state.screenshots.filter(shot => shot.suspicious !== true).reduce((latest, shot) => Math.max(latest, shot.time ?? 0), 0);
       lookedSinceChange = lastShot > full.change.time;
-      visualTurn = newCaptures.length > 0 || visualTurnOf(session, turn, full.gate.gates.map(item => path.join('docs', item.scope, 'VISUAL_GATE.md')));
+      // A worker screenshot alone is not visual work: Studio inspection and log checks capture
+      // too. New captures still get their own preview reminder below.
+      visualTurn = visualTurnOf(session, turn, full.gate.gates.map(item => path.join('docs', item.scope, 'VISUAL_GATE.md')));
     }
     if (dispatched.length === 0 && gate === undefined && newCaptures.length === 0) return;
     const corrections = replyCorrections({ reply: finalReply(session, turn), dispatched, gate, visualTurn, lookedSinceChange, newCaptures });
@@ -412,8 +414,8 @@ export function registerVisualGateTool(ctx, visual) {
   if (typeof ctx.tools?.register !== 'function') return undefined;
   return ctx.tools.register({
     name: 'roblox_visual_gate',
-    description: 'Run the Roblox visual gate exactly as goal completion does and list every problem with its rule id, plus the full '
-      + 'rule table and the watched/ignored paths. Use it before reporting on visual work and before completing a visual goal.',
+    description: 'Run the Roblox visual gate exactly as goal completion does and list every problem with its rule id and the rule '
+      + 'it breaks, plus the watched/ignored paths. Use it before reporting on visual work and before completing a visual goal.',
     parameters: { type: 'object', additionalProperties: false, properties: {} },
     output: {
       schema: { type: 'object' },
@@ -432,7 +434,9 @@ export function registerVisualGateTool(ctx, visual) {
         problems: full.problems.map(item => ({ rule: item.rule, text: item.text })),
         lastWatchedChange: full.change.time > 0 ? { path: full.change.what, at: new Date(full.change.time).toISOString() } : null,
         watch: full.gate.gates.map(item => ({ scope: item.scope, watched: item.watch?.watched ?? [], ignored: item.watch?.ignored ?? [] })),
-        rules: allRules(),
+        // Only the rules that fail: the full table is large and repeated on every call.
+        // `node tools/check-visual-gate.mjs --rules` prints all of them.
+        rules: Object.fromEntries(Object.entries(allRules()).filter(([rule]) => full.problems.some(item => item.rule === rule))),
       };
     },
   });
@@ -608,10 +612,17 @@ export function apply(ctx, config) {
   const prompt = ctx.get('systemPrompt');
   let dropSection;
   if (prompt !== undefined && typeof prompt.section === 'function') {
+    // DSH owns the section placement names and rejects a non-finite order, so place the
+    // briefing right after the subagent tool section and fall back to a fixed number.
+    let order = 2801;
+    try {
+      const subagentOrder = typeof prompt.getSectionOrder === 'function' ? prompt.getSectionOrder('TOOL_SUBAGENT') : undefined;
+      if (Number.isFinite(subagentOrder)) order = subagentOrder + 1;
+    } catch { /* keep the fallback order */ }
     try {
       dropSection = prompt.section({
         name: 'roblox-routing',
-        order: typeof prompt.getSectionOrder === 'function' ? prompt.getSectionOrder('ROBLOX_ROUTING') : 900,
+        order,
         text: briefing,
         interpolate: false,
       });

@@ -100,6 +100,34 @@ test('the mounted guard enforces skills after routing and registers the audit to
   assert.equal(guards[0]({ name: 'read', arguments: {}, agent: { id: 'lead', session } }), undefined);
 });
 
+test('the route briefing section gets a finite order from a known DSH placement', () => {
+  const warn = console.warn; const warnings = []; console.warn = m => warnings.push(m);
+  try {
+    for (const [lookup, expected] of [
+      [name => ({ TOOL_SUBAGENT: 2800 })[name], 2801],
+      [() => { throw new Error('unknown placement'); }, 2801],
+      [() => undefined, 2801],
+    ]) {
+      const { ctx } = harness();
+      const sections = [];
+      ctx.get = name => (name === 'systemPrompt'
+        ? {
+            section: s => {
+              if (!Number.isFinite(s.order)) throw new TypeError(`prompt section "${s.name}" order must be a finite number`);
+              sections.push(s); return () => {};
+            },
+            getSectionOrder: lookup,
+          }
+        : undefined);
+      routing.apply(ctx, {});
+      const briefing = sections.find(s => s.name === 'roblox-routing');
+      assert.ok(briefing, 'route briefing registered');
+      assert.equal(briefing.order, expected);
+    }
+    assert.deepEqual(warnings.filter(m => /prompt section unavailable/.test(m)), []);
+  } finally { console.warn = warn; }
+});
+
 test('worker status context is lead-only and follows subagent lifecycle events', () => {
   const { ctx } = harness();
   const listeners = {};

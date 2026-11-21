@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { loadBrain, sessionState } from '../skill-policy.js';
 import { createVisualGuard, registerVisualGateTool } from '../routing.js';
 import { checkVisualGate, parseGate } from '../tools/check-visual-gate.mjs';
-import { replyCorrections } from '../visual-policy.js';
+import { replyCorrections, gateStatusLine } from '../visual-policy.js';
 import { statusContext } from '../coordination.js';
 
 const brain = loadBrain();
@@ -161,7 +161,7 @@ test('one rule source: a different project copy of the script is never run', () 
     'the bundled rules decide; an outdated project script cannot disagree');
 });
 
-test('roblox_visual_gate reports the same problems as completion, with the rule table and watched paths', () => {
+test('roblox_visual_gate reports the same problems as completion, with the failing rules and watched paths', () => {
   const root = project(PASS_GATE.replace('Verdict: PASS', 'Verdict: FAIL'));
   const ctx = { get: key => (key === 'workingDirectory' ? { get: () => root } : undefined) };
   const visual = createVisualGuard({ ctx, brain, evidence: { rows: () => [] }, collect: async () => ({ captures: [] }) });
@@ -171,7 +171,8 @@ test('roblox_visual_gate reports the same problems as completion, with the rule 
   const value = tool.execute({}, { agent: { id: 'lead', session: lead([]) } });
   assert.equal(value.ok, false);
   assert.deepEqual([...new Set(value.problems.map(item => item.rule))].sort(), ['LEAD_LOOKED', 'REVIEWER_DISPATCHED', 'REVIEW_AFTER_WORK', 'VERDICT']);
-  assert.ok(value.rules.STALE && value.rules.LEAD_LOOKED && value.rules.CHECKLIST.includes('5'));
+  assert.ok(value.rules.LEAD_LOOKED && value.rules.VERDICT, 'each failing rule is explained');
+  assert.deepEqual(Object.keys(value.rules).sort(), [...new Set(value.problems.map(item => item.rule))].sort(), 'passing rules are left out');
   assert.deepEqual(value.watch[0].watched, ['src/client']);
   assert.ok(value.watch[0].ignored.includes('assets/backup/**'));
   const off = createVisualGuard({ ctx: { get: () => ({ get: () => project(null) }) }, brain });
@@ -230,7 +231,7 @@ test('check-visual-gate.mjs exits 1 on each missing requirement and 0 on a compl
 });
 
 test('the shipped template parses and is not itself a passing gate', () => {
-  const template = readFileSync(path.join(repo, 'docs/smaller-launch/VISUAL_GATE.md'), 'utf8');
+  const template = readFileSync(path.join(repo, 'templates/VISUAL_GATE.md'), 'utf8');
   const gate = parseGate(template);
   assert.equal(gate.verdict, 'FAIL');
   assert.equal(gate.screenshots.length, 3);
@@ -466,4 +467,13 @@ test('dispatches are recorded with route, role and worker name from the session 
   const state = sessionState(lead(dispatch('reviewer', reviewPrompt, VISUAL_ROUTE)), brain);
   assert.deepEqual({ ...state.dispatchLog[0], prompt: undefined, time: undefined },
     { name: 'reviewer', ...VISUAL_ROUTE, role: 'visual', tier: 'standard', prompt: undefined, time: undefined, turn: 1 });
+});
+
+test('the lead prompt carries a gate line only while the gate fails', () => {
+  assert.equal(gateStatusLine(undefined), '');
+  assert.equal(gateStatusLine({ ok: true, problems: [] }), '');
+  const line = gateStatusLine({ ok: false, problems: [{ rule: 'VERDICT_PASS', text: 'x' }] });
+  assert.match(line, /FAILED on VERDICT_PASS/);
+  assert.match(line, /Do not mention the gate in replies about other work/);
+  assert.match(line, /in plain words/);
 });

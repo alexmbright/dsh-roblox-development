@@ -24,7 +24,7 @@ test('every shipped route carries a default purpose', () => {
 
 
 
-test('the lead briefing lists enabled cells with their model and purpose', async () => {
+test('the lead briefing lists enabled cells with their model, leaving purposes to roblox_routes', async () => {
   const { routesBriefing } = await import('../routing.js');
   const text = routesBriefing([
     { role: 'planner', tiers: [
@@ -32,7 +32,8 @@ test('the lead briefing lists enabled cells with their model and purpose', async
       { id: 'planner/expert', provider: 'claude', model: 'claude-opus-5-5', reasoning_effort: 'high', purpose: 'Hard plans.', enabled: false },
     ] },
   ]);
-  assert.match(text, /planner\/fast → deepseek-account\/deepseek-flash at low: Plans work\./);
+  assert.match(text, /planner\/fast → deepseek-account\/deepseek-flash at low$/m);
+  assert.doesNotMatch(text, /Plans work/);
   assert.doesNotMatch(text, /claude-opus-5-5/);
   assert.match(text, /roblox_routes/);
 });
