@@ -22,7 +22,7 @@ test('running workers are what the lead is waiting on', () => {
   assert.match(text, /implementer: running/);
   assert.match(text, /reviewer: running/);
   assert.doesNotMatch(text, /other/);
-  assert.match(text, /"Waiting on:" line/);
+  assert.match(text, /"Waiting on:" line on its own, then one Markdown list item per running worker/);
 });
 
 test('finished workers move out of the waiting list with their outcome, newest first', async () => {

@@ -180,3 +180,8 @@ test('coordinator writes operator messages in ASD-STE100', () => {
   assert.match(patch, /Write every message to the operator in ASD-STE100 Simplified Technical English\. Give a little context first\./);
   assert.match(patch, /Keep technical names and required markers exact, for example "Waiting on:"\./);
 });
+
+test('coordinator lists running workers one per line', () => {
+  assert.match(patch, /"Waiting on:" line on its own, then one Markdown list item per running worker/);
+  assert.match(patch, /Never join the workers into one paragraph\./);
+});

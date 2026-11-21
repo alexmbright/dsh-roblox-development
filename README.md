@@ -128,7 +128,7 @@ Describe the game outcome; the captain coordinates and delegates. Workers implem
 
 Skill use is enforced, not advisory. Worker dispatch and file edits are refused until the lead has loaded the workflow skill and the relevant roblox-brain domain skills. Every worker prompt must state `Brain revision: <pinned SHA>`, `Required skills: <names>` and require a report of loaded skills and applied checks. Workers, including nested helpers, cannot edit until they have loaded their required skills, and only skills served from the pinned bundle count. A goal cannot be completed while any worker is missing one. Questions and lookups are never gated. See [skill-selection.md](skills/roblox-tiered-workflow/references/skill-selection.md#enforcement).
 
-The coordinator announces each dispatch and each finished worker with its model and reasoning effort, and ends every reply with a `Waiting on:` line. A live worker-status context, which changes only when a worker starts or finishes, keeps that line accurate. A reply that announces a dispatch without the model and effort is sent back once for correction.
+The coordinator announces each dispatch and each finished worker with its model and reasoning effort, and ends every reply with a `Waiting on:` line followed by one list item per running worker. A live worker-status context, which changes only when a worker starts or finishes, keeps that line accurate. A reply that announces a dispatch without the model and effort is sent back once for correction.
 
 ### Shared screenshots
 
@@ -194,6 +194,7 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.5.10** — Easier status to read. The lead ends each reply with a `Waiting on:` line and then one list item per running worker (name, model, effort, task), instead of one long paragraph. With no running worker it writes `Waiting on: nothing`.
 - **1.5.9** — More concurrent work. The lead runs every independent ready task at the same time and queues a task only when it edits the same script or needs the same playtest. Studio takes turns only for playtests, scene changes and script writes; other workers may read Studio outside a playtest and do their offline work (read source, draft edits, compile, write test steps) before their Studio turn. When at most one worker runs and a reply queues work behind Studio, the runtime sends the reply back once.
 - **1.5.8** — Lower token use. The community Studio MCP loads 14 core tools; the lead loads the rest on demand with `roblox_studio_tools` (about 14,000 fewer tokens per request; set `toolSearch: false` in the `mcp-robloxstudio` config to load all tools). The persona is shorter and asks for ASD-STE100 Simplified Technical English in operator messages. The visual-gate line appears only while the gate fails, in plain words. Fixes the route briefing, which never reached the lead's prompt. The visual-gate template moved to `templates/VISUAL_GATE.md`.
 - **1.5.7** — The bundle no longer ships default worker models. A fresh install seeds every role/tier cell with your main model; `routes.json` carries only roles, tiers, purposes and dispatch rules, and nothing outside your panel choices is dispatchable.

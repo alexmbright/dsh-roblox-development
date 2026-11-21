@@ -37,8 +37,8 @@ export function statusContext(view, routes = new Map()) {
     for (const worker of finished) lines.push(`  - ${worker.name}${route(worker)}: ${worker.outcome ?? 'completed'}`);
     if (running.length <= 1) lines.push(IDLE_HINT);
   }
-  lines.push('Every reply to the user must end with a "Waiting on:" line naming each running worker, its model and effort, and its task, '
-    + 'or "Waiting on: nothing". Announce each finished worker by name with its outcome before using its results.');
+  lines.push('Every reply to the user must end with a "Waiting on:" line on its own, then one Markdown list item per running worker '
+    + '("- name (provider/model, effort): task"), or the single line "Waiting on: nothing". Announce each finished worker by name with its outcome before using its results.');
   return lines.join('\n');
 }
 
