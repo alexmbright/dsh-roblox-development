@@ -27,16 +27,26 @@ function seeded(seeds) {
   return { ...React, useState: () => [seeds[index++], () => {}] };
 }
 
-function register(plugin) {
+/** Mount the plugin and return its registrations by slot name. */
+function mount(plugin) {
   const registered = [];
   plugin.apply({
     slots: {
       inject: (_slot, cb) => cb?.(),
-      register: (_options, component) => { registered.push(component); return () => {}; },
+      register: (options, component) => { registered.push({ options, component }); return () => {}; },
     },
   });
-  return registered[0];
+  return registered;
 }
+
+/** The single Roblox page component, which holds every section. */
+function register(plugin) {
+  return mount(plugin).find(entry => entry.options.name === 'main').component;
+}
+
+/** useState seeds in render order: Visual gate, then routing, then Open Cloud. */
+const GATE_SEEDS = [{ status: 'ready', value: 'off', legacy: false }, null, false, null];
+const CLOUD_SEEDS = [{ status: 'ready', fields: {} }, null, null, false, '', '', ''];
 
 /** Walk a stub-React tree, materializing function components like React would. */
 function walk(node, out = []) {
@@ -49,13 +59,19 @@ function walk(node, out = []) {
   return out;
 }
 
-test('the client registers a Roblox routing settings section', () => {
+test('the client registers one Roblox sidebar entry and page, and no settings sections', () => {
   const plugin = loaded[0].factory(name => (name === 'react' ? React : undefined));
   assert.deepEqual(plugin.inject, ['slots']);
   const seen = [];
   plugin.apply({ slots: { inject: (slot, cb) => { seen.push(slot); cb?.(); }, register: () => () => {} } });
-  // Routing, Visual gate and Open Cloud each register their own settings section.
-  assert.deepEqual(seen, ['settings.section', 'settings.section', 'settings.section']);
+  assert.deepEqual(seen, ['sidebar.panellist', 'main']);
+  const entries = mount(loaded[0].factory(name => (name === 'react' ? React : undefined)));
+  const entry = entries.find(item => item.options.name === 'sidebar.panellist');
+  const main = entries.find(item => item.options.name === 'main');
+  assert.equal(entry.options.label(), 'Roblox');
+  assert.equal(entry.options.id, 'dsh-roblox-development');
+  assert.equal(main.options.key, entry.options.id, 'the page is keyed by the sidebar entry id');
+  assert.ok(!entries.some(item => item.options.name === 'settings.section'), 'nothing is left in Settings');
 });
 
 test('the panel lays out one group per role with a tier row inside', () => {
@@ -78,7 +94,7 @@ test('the panel lays out one group per role with a tier row inside', () => {
     { provider: 'deepseek-account', model: 'deepseek-flash', label: 'DeepSeek / Flash', efforts: ['low', 'high'] },
     { provider: 'deepseek-account', model: 'deepseek-v4-pro', label: 'DeepSeek / Pro', efforts: ['high', 'max'] },
   ];
-  const seeds = ['ready', null, { roles, models }, [], {}, {}, false, null];
+  const seeds = [...GATE_SEEDS, 'ready', null, { roles, models }, [], {}, {}, false, null, ...CLOUD_SEEDS];
   const section = register(loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined)));
   const elements = walk(section({}));
 
@@ -93,7 +109,7 @@ test('the panel lays out one group per role with a tier row inside', () => {
   assert.deepEqual(efforts, ['low', 'high'], 'effort picker offers the efforts the chosen model declares');
   assert.equal(effortPickers[0].props.value, 'high');
   assert.equal(effortPickers[0].props.disabled, false);
-  const checkboxes = elements.filter(element => element.type === 'input' && element.props?.type === 'checkbox');
+  const checkboxes = elements.filter(element => element.type === 'input' && element.props?.type === 'checkbox' && element.props['aria-label'] !== 'Visual gate');
   assert.equal(checkboxes.length, 21, 'one switch per tier');
   const purposes = elements.filter(element => element.type === 'textarea');
   assert.equal(purposes.length, 21, 'one purpose per tier');
@@ -118,7 +134,7 @@ test('the effort picker keeps an unsupported saved effort visible and disables u
     { id: 'planner/standard', tier: 'standard', provider: '', model: '', reasoning_effort: '', enabled: false, purpose: 'p' },
   ] }];
   const models = [{ provider: 'deepseek-account', model: 'deepseek-flash', label: 'Flash', efforts: ['low', 'high'] }];
-  const seeds = ['ready', null, { roles, models }, [], {}, {}, false, null];
+  const seeds = [...GATE_SEEDS, 'ready', null, { roles, models }, [], {}, {}, false, null, ...CLOUD_SEEDS];
   const section = register(loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined)));
   const pickers = walk(section({})).filter(element => element.type === 'select' && / reasoning effort$/.test(element.props['aria-label']));
   const labels = walk(pickers[0].children).filter(element => element.type === 'option').map(option => option.children[0]);
@@ -150,22 +166,21 @@ test('the client registers a Roblox screenshots tab in the right sidebar when it
   assert.doesNotThrow(() => plugin.apply({ slots }), 'compositions without a right sidebar still mount');
 });
 
-test('the client also registers a Roblox Open Cloud settings section with write-only fields', () => {
+test('the Roblox page holds the Open Cloud section with write-only fields', () => {
   const ready = {
     status: 'ready',
     fields: { apiKey: { configured: true, source: 'stored', writable: true, masked: 'fixture-preview-should-not-render' }, creatorUserId: { configured: false, writable: true }, creatorGroupId: { configured: false, writable: true } },
   };
-  // useState call order: CloudPanel (state, failure, notice, busy), then one draft per field.
-  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([ready, null, null, false, '', '', '']) : undefined));
-  const sections = [];
-  plugin.apply({ slots: { inject: (_slot, cb) => cb?.(), register: (options, component) => { sections.push({ options, component }); return () => {}; } } });
-  const cloud = sections.find(entry => entry.options.id === 'roblox-open-cloud');
-  assert.ok(cloud, 'open cloud section registered');
-  assert.equal(cloud.options.name, 'settings.section');
-  assert.ok(sections.some(entry => entry.options.id === 'roblox-routing'), 'routing section kept');
+  // useState order across the page: Visual gate, routing (loading), then CloudPanel (state, failure, notice, busy) and one draft per field.
+  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([...GATE_SEEDS, 'loading', null, { roles: [], models: [] }, [], {}, {}, false, null, ready, null, null, false, '', '', '']) : undefined));
+  const page = mount(plugin).find(entry => entry.options.name === 'main');
+  assert.ok(page, 'the Roblox page is registered');
 
-  const nodes = walk({ type: cloud.component, props: {}, children: [] });
-  const inputs = nodes.filter(node => node.type === 'input');
+  const all = walk({ type: page.component, props: {}, children: [] });
+  assert.ok(all.some(node => node.props?.['data-roblox-routing-section']), 'routing section is on the page');
+  assert.ok(all.some(node => node.props?.['data-roblox-visual-gate-section']), 'visual gate section is on the page');
+  const nodes = all.filter(node => node.type !== 'select');
+  const inputs = nodes.filter(node => node.type === 'input' && node.props?.type !== 'checkbox');
   assert.equal(inputs.length, 3);
   const key = inputs.find(node => node.props['aria-label'] === 'Open Cloud API key');
   assert.equal(key.props.type, 'password');
@@ -180,16 +195,15 @@ test('the client also registers a Roblox Open Cloud settings section with write-
 });
 
 function gateSection(seeds) {
-  const plugin = loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined));
-  const sections = [];
-  plugin.apply({ slots: { inject: (_slot, cb) => cb?.(), register: (options, component) => { sections.push({ options, component }); return () => {}; } } });
-  return sections.find(entry => entry.options.id === 'roblox-visual-gate');
+  // Gate seeds come first on the page; the routing panel and Open Cloud panel are left loading.
+  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([...seeds, 'loading', null, { roles: [], models: [] }, [], {}, {}, false, null, ...CLOUD_SEEDS]) : undefined));
+  return mount(plugin).find(entry => entry.options.name === 'main');
 }
 
 test('the Visual gate section shows an Off-by-default switch and says when a change applies', () => {
   const section = gateSection([{ status: 'ready', value: 'off', legacy: false }, null, false, null]);
-  assert.ok(section, 'Visual gate section registered');
-  assert.equal(section.options.name, 'settings.section');
+  assert.ok(section, 'the Roblox page is registered');
+  assert.equal(section.options.name, 'main');
   const nodes = walk({ type: section.component, props: {}, children: [] });
   const toggle = nodes.find(node => node.type === 'input' && node.props?.['aria-label'] === 'Visual gate');
   assert.ok(toggle, 'a Visual gate switch');

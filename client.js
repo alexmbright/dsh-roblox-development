@@ -1,5 +1,6 @@
 /**
- * Routing panel for the Roblox development bundle.
+ * Roblox page for the development bundle: one sidebar entry holding the visual gate, routing and
+ * Open Cloud settings.
  *
  * One section per role, and under it one row per tier with its switch, model picker, effort
  * picker and purpose. The model list is the set of providers and models this installation actually
@@ -458,7 +459,7 @@ window.__ModuleLoader__.load({
         h('h3', { style: { margin: '0 0 4px', fontSize: '15px', fontWeight: 600 } }, 'Roblox Open Cloud'),
         h('p', { style: { ...muted, margin: '0 0 8px' } },
           'Lets the robloxstudio MCP server call Roblox Open Cloud: asset upload and generation, monetization, experience and place-version tools. '
-          + 'Values are saved in DSH’s credential store and used by the community MCP. The settings page does not show saved values. '
+          + 'Values are saved in DSH’s credential store and used by the community MCP. This page does not show saved values. '
           + 'The official Roblox_Studio server does not use them. Everything else works without a key.'),
         h(CloudPanel));
     }
@@ -582,27 +583,49 @@ window.__ModuleLoader__.load({
       return tab?.title ?? 'Roblox screenshots';
     }
 
+    /* ------------------------------------------------------------------------------------------ */
+    /* One Roblox page: every setting for this bundle                                              */
+    /* ------------------------------------------------------------------------------------------ */
+
+    const PAGE_ID = 'dsh-roblox-development';
+    const pageStyle = {
+      height: '100%', minHeight: 0, overflowY: 'auto', boxSizing: 'border-box', padding: '16px 24px 32px',
+      display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '920px',
+    };
+    const divider = { borderTop: '1px solid rgba(128,128,128,0.25)', paddingTop: '20px' };
+
+    /** Sidebar icon: a tilted block with code brackets, drawn in the current text colour. */
+    function RobloxPanelIcon({ size = 18 }) {
+      return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' },
+        h('rect', { x: 4.5, y: 4.5, width: 15, height: 15, rx: 3, transform: 'rotate(12 12 12)', stroke: 'currentColor', strokeWidth: 1.8 }),
+        h('path', { d: 'm10.5 9.5-2.5 2.5 2.5 2.5m3-5 2.5 2.5-2.5 2.5', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }));
+    }
+
+    /** The single Roblox page: Visual gate, routing and Open Cloud, in that order. */
+    function RobloxPage() {
+      return h('div', { style: pageStyle, 'data-roblox-page': true },
+        h('header', null,
+          h('h2', { style: { margin: '0 0 4px', fontSize: '18px', fontWeight: 600 } }, 'Roblox'),
+          h('p', { style: { ...muted, margin: 0 } }, 'Every setting for the Roblox development bundle, in one place.')),
+        h(VisualGateSection),
+        h('div', { style: divider }, h(RoutingSection)),
+        h('div', { style: divider }, h(OpenCloudSection)));
+    }
+
     return {
       inject: ['slots'],
       apply(ctx) {
-        ctx.slots.inject('settings.section', () => ctx.slots.register({
-          name: 'settings.section',
-          id: 'roblox-routing',
-          order: 25,
-          label: 'Roblox routing',
-        }, RoutingSection));
-        ctx.slots.inject('settings.section', () => ctx.slots.register({
-          name: 'settings.section',
-          id: 'roblox-visual-gate',
-          order: 24,
-          label: 'Roblox visual gate',
-        }, VisualGateSection));
-        ctx.slots.inject('settings.section', () => ctx.slots.register({
-          name: 'settings.section',
-          id: 'roblox-open-cloud',
-          order: 26,
-          label: 'Roblox Open Cloud',
-        }, OpenCloudSection));
+        // One sidebar entry and one page hold every Roblox setting (no Settings sections).
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist',
+          id: PAGE_ID,
+          order: 35,
+          label: () => 'Roblox',
+        }, RobloxPanelIcon));
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main',
+          key: PAGE_ID,
+        }, RobloxPage));
 
         // The right sidebar is optional in a composition: register the tab only where it exists.
         if (typeof ctx.inject !== 'function') return;

@@ -435,7 +435,7 @@ export function registerVisualGateTool(ctx, visual) {
       const session = exec?.agent?.session;
       const full = session === undefined ? undefined : visual.report(session);
       if (full === undefined) {
-        return { enabled: false, note: 'The Visual gate setting is Off (the default), so the gate does not apply. Turn it On in Settings -> Roblox routing to enforce it in new sessions; existing VISUAL_GATE.md files are kept.' };
+        return { enabled: false, note: 'The Visual gate setting is Off (the default), so the gate does not apply. Turn it On on the Roblox page (sidebar) to enforce it in new sessions; existing VISUAL_GATE.md files are kept.' };
       }
       return {
         enabled: true,

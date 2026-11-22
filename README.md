@@ -8,8 +8,8 @@ Package: `@alexturbo/dsh-roblox-development` · Preset ID: `roblox` · Licence: 
 
 - **A coordinator and one implementer for routine work.** The lead defines success; one implementer builds and verifies a routine task, with one focused Studio check. More workers join only for parallel work or a specialist.
 - **Tiered delegation.** Seven roles (planner, scout, implementer, reviewer, qa, studio, visual) across three tiers (fast, standard, expert). Every worker dispatch must name an explicit provider, model and reasoning effort drawn from the routing matrix.
-- **A persisted Visual gate toggle, Off by default.** Settings → Roblox visual gate turns the formal visual review on for polish or release work.
-- **An editable routing matrix.** Settings → Roblox routing lists each role with its tiers nested underneath; each tier picks its own model, can be switched off, and carries a purpose the lead reads before assigning work.
+- **A persisted Visual gate toggle, Off by default.** The **Roblox** page in the sidebar has a Visual gate switch that turns the formal visual review on for polish or release work.
+- **An editable routing matrix.** The **Roblox** page lists each role with its tiers nested underneath; each tier picks its own model, can be switched off, and carries a purpose the lead reads before assigning work.
 - **Pinned tools that need no approval.** `lune`, `stylua`, `selene`, `luau`, `luau-analyze`, `luau-compile` and `luau-lsp` are provisioned once and invoked through `roblox_run_tool` in the host process — no shell, no sandbox escalation, no version drift.
 - **29 pinned Roblox skills.** Vendored from [roblox-brain](https://github.com/TabooHarmony/roblox-brain) at `ceee4aaa`, read offline from the installed bundle. Sessions never fetch upstream.
 - **Studio via MCP.** The official Studio MCP server and the pinned Chrrxs bridge, with a small adapter that keeps Chrrxs structured results visible.
@@ -63,7 +63,7 @@ Add that source in DSH's custom plugin indexes UI (enable the optional custom pl
 
 ## Configuration
 
-Routing lives in **Settings → Roblox routing**.
+Every setting lives on one page: click **Roblox** in the left sidebar (below Plugins and Automation tasks). It has three sections, in order: **Roblox visual gate**, **Roblox routing** and **Roblox Open Cloud**. Nothing is added to the Settings menu. Routing is described below, the Visual gate under [Visual gate toggle](#visual-gate-toggle) and the credentials under [Open Cloud API key](#open-cloud-api-key).
 
 - **First install seeds the matrix with your main model.** Every cell is set to your DSH default (main) model, or the first connected model if none is set, and stored. Until then workers inherit the lead's model. The bundle ships no models of its own, and later releases never overwrite your choices.
 - **The panel is the only source of dispatch models.** `routes.json` supplies the role/tier structure, the purposes and the `dispatchGuard` rules — never a dispatchable model. Nothing is auto-substituted: a cell with no stored choice contributes no route rather than inheriting one.
@@ -74,7 +74,7 @@ Routing lives in **Settings → Roblox routing**.
 
 ### Visual gate toggle
 
-**Settings → Roblox visual gate** holds one persisted switch, **Off** by default. It is saved per profile in `roblox-settings.json` in the profile directory (beside `roblox-routing.json`) and survives restarts.
+The **Visual gate** section at the top of the **Roblox** page holds one persisted switch, **Off** by default. It is saved per profile in `roblox-settings.json` in the profile directory (beside `roblox-routing.json`) and survives restarts.
 
 - **Off** skips the formal visual reviewer, the screenshot checklist and reapproval after edits. Studio screenshots, playtests and the visual role stay available on demand.
 - **On** restores the existing gate for polish or release work (see [Visual quality gate](#visual-quality-gate)).
@@ -202,7 +202,7 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 ## Open Cloud API key
 
-The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, monetization, experience and place-version tools) need a Roblox Open Cloud API key. Open **Settings → Roblox Open Cloud**, paste the key from Creator Hub (create.roblox.com → Credentials) and press Save. Optionally add a creator user ID or group ID, which asset uploads use as the owner.
+The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, monetization, experience and place-version tools) need a Roblox Open Cloud API key. Open the **Roblox** page in the sidebar, go to **Open Cloud**, paste the key from Creator Hub (create.roblox.com → Credentials) and press Save. Optionally add a creator user ID or group ID, which asset uploads use as the owner.
 
 - Save writes to DSH's credential store, not the preset or routing configuration. The panel requires an authenticated local DSH browser session. It displays whether a value is set and where it comes from, without returning the key or a masked preview.
 - DSH supplies `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_USER_ID` and `ROBLOX_CREATOR_GROUP_ID` to the community `robloxstudio` MCP launcher, not the official `Roblox_Studio` server. The launcher removes these variables before the verified MCP starts, so its Studio and media helpers don't inherit them. Studio-only tools remain available without a key. This does not isolate secrets from software running under your OS account.
@@ -214,7 +214,7 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
-- **1.6.0** — Faster routine work. The lead defines success and assigns one implementer who builds and verifies a routine task with one focused Studio check; other tools stay on demand. Independent review is required only for saves and migrations, purchase grants, multiplayer authority and releases, needs a different worker but not a different provider, and blocks only on concrete bugs, missed acceptance criteria or specific risks. New persisted **Visual gate** toggle in Settings, default Off: Off skips the formal visual reviewer, screenshot checklist and reapproval after edits; On restores the existing gate. Legacy `auto` and unset read as Off, explicit `on`/`off` are kept, and `VISUAL_GATE.md` files are untouched. A running session keeps the setting it started with: change the toggle, then start a new Roblox development session (restart DSH if the live reload fails).
+- **1.6.0** — Faster routine work. The lead defines success and assigns one implementer who builds and verifies a routine task with one focused Studio check; other tools stay on demand. Independent review is required only for saves and migrations, purchase grants, multiplayer authority and releases, needs a different worker but not a different provider, and blocks only on concrete bugs, missed acceptance criteria or specific risks. All Roblox settings now live on one **Roblox** page, opened from the new **Roblox** entry in the left sidebar (Visual gate, Roblox routing and Roblox Open Cloud); the three separate Settings sections are gone. New persisted **Visual gate** toggle on that page, default Off: Off skips the formal visual reviewer, screenshot checklist and reapproval after edits; On restores the existing gate. Legacy `auto` and unset read as Off, explicit `on`/`off` are kept, and `VISUAL_GATE.md` files are untouched. A running session keeps the setting it started with: change the toggle, then start a new Roblox development session (restart DSH if the live reload fails).
 - **1.5.11** — New icon: a tilted blue block with white code brackets. It is drawn for DSH's 36×36 icon size with a transparent background, so it sits correctly in Plugin Manager's tile in light and dark themes.
 - **1.5.10** — Easier status to read. The lead ends each reply with a `Waiting on:` line and then one list item per running worker (name, model, effort, task), instead of one long paragraph. With no running worker it writes `Waiting on: nothing`.
 - **1.5.9** — More concurrent work. The lead runs every independent ready task at the same time and queues a task only when it edits the same script or needs the same playtest. Studio takes turns only for playtests, scene changes and script writes; other workers may read Studio outside a playtest and do their offline work (read source, draft edits, compile, write test steps) before their Studio turn. When at most one worker runs and a reply queues work behind Studio, the runtime sends the reply back once.

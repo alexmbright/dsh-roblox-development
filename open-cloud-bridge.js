@@ -1,5 +1,5 @@
 /**
- * Browser bridge for the "Roblox Open Cloud" settings section.
+ * Browser bridge for the Open Cloud section of the Roblox page.
  *
  * Three same-origin loopback routes on the existing web carrier, the same posture as the routing
  * panel's bridge. Values go to DSH's credential store and nowhere else; no response ever carries

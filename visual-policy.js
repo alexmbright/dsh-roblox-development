@@ -266,7 +266,7 @@ export function completionDenial({ root, objective, lead, workers = [] }) {
 export function visualGateInstructions(mode) {
   if (mode === 'on') {
     return [
-      'Visual gate: ON (Settings -> Roblox routing). The project gate is enforced for UI, art, scene, layout, polish and release work. '
+      'Visual gate: ON (Roblox page in the sidebar). The project gate is enforced for UI, art, scene, layout, polish and release work. '
       + 'Judge visuals only from screenshots you viewed yourself this session, never from a worker\'s or operator\'s text, and never call visuals done, good or ready on a rating alone. '
       + 'Every dispatch states "Role: <role>/<tier>". UI, art, scene and layout work is accepted only after a visual/standard (visual/expert for art direction) review whose prompt lists the screenshot capture ids, asks for "Verdict: PASS|FAIL" with a checklist, and names the docs/<scope>/VISUAL_GATE.md that only this reviewer writes. '
       + 'Edits after the review need a fresh review. roblox_visual_gate runs the same check as goal completion and explains each failing rule. '
@@ -275,7 +275,7 @@ export function visualGateInstructions(mode) {
     ].join('\n');
   }
   return [
-    'Visual gate: OFF (default; Settings -> Roblox routing). Do not dispatch a formal visual reviewer, do not require a screenshot checklist or VISUAL_GATE.md, and do not ask for reapproval after edits. '
+    'Visual gate: OFF (default; Roblox page in the sidebar). Do not dispatch a formal visual reviewer, do not require a screenshot checklist or VISUAL_GATE.md, and do not ask for reapproval after edits. '
     + 'A routine UI, art, scene or content task finishes with one implementer who builds it and inspects it once in Studio: one screenshot of the changed view, plus capture_device_matrix only when responsive layout is at risk. '
     + 'Look at that capture yourself (roblox_screenshots view) before you call visuals done; a worker\'s rating alone is not evidence. '
     + 'Studio screenshots, playtests and the visual role stay available on demand, for example for art direction a user asks for. '
