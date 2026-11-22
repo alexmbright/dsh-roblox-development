@@ -6,7 +6,9 @@ Package: `@alexturbo/dsh-roblox-development` · Preset ID: `roblox` · Licence: 
 
 ## What you get
 
+- **A coordinator and one implementer for routine work.** The lead defines success; one implementer builds and verifies a routine task, with one focused Studio check. More workers join only for parallel work or a specialist.
 - **Tiered delegation.** Seven roles (planner, scout, implementer, reviewer, qa, studio, visual) across three tiers (fast, standard, expert). Every worker dispatch must name an explicit provider, model and reasoning effort drawn from the routing matrix.
+- **A persisted Visual gate toggle, Off by default.** Settings → Roblox visual gate turns the formal visual review on for polish or release work.
 - **An editable routing matrix.** Settings → Roblox routing lists each role with its tiers nested underneath; each tier picks its own model, can be switched off, and carries a purpose the lead reads before assigning work.
 - **Pinned tools that need no approval.** `lune`, `stylua`, `selene`, `luau`, `luau-analyze`, `luau-compile` and `luau-lsp` are provisioned once and invoked through `roblox_run_tool` in the host process — no shell, no sandbox escalation, no version drift.
 - **29 pinned Roblox skills.** Vendored from [roblox-brain](https://github.com/TabooHarmony/roblox-brain) at `ceee4aaa`, read offline from the installed bundle. Sessions never fetch upstream.
@@ -68,7 +70,17 @@ Routing lives in **Settings → Roblox routing**.
 - **Each tier has its own reasoning effort picker**, listing the efforts the chosen model declares. An effort change applies as soon as it is saved; a saved effort the model no longer supports is shown as such and rejected on save.
 - **Routing changes apply on Save.** The routing matrix is used for the next dispatch; it does not change workers already running. Adding a model to the profile allowlist also requires a successful live profile reload, and new sessions pick up that allowlist. If live reload fails, the panel tells you to restart DSH.
 - **Off-matrix dispatch is refused** unless the caller records a `capacityFallback` reason, which is logged. Fork dispatch is always refused: a forked child inherits the lead model and cannot carry a tier.
-- **Reviewer independence is flagged.** The panel warns when reviewer cells share the implementer's provider, because final review must not come from the same provider.
+- **Independent review needs a different worker, not a different provider.** The panel no longer flags a reviewer that shares the implementer's provider.
+
+### Visual gate toggle
+
+**Settings → Roblox visual gate** holds one persisted switch, **Off** by default. It is saved per profile in `roblox-settings.json` in the profile directory (beside `roblox-routing.json`) and survives restarts.
+
+- **Off** skips the formal visual reviewer, the screenshot checklist and reapproval after edits. Studio screenshots, playtests and the visual role stay available on demand.
+- **On** restores the existing gate for polish or release work (see [Visual quality gate](#visual-quality-gate)).
+- **Existing values.** An explicit `on` or `off` is kept. Legacy `auto` and an unset setting both mean Off. Existing `VISUAL_GATE.md` files are never edited or deleted, and a file alone no longer switches the gate on.
+- **One setting, two readers.** The same value reaches the `roblox-routing-guard` row (`visualGate`) and the "Visual gate" section of the lead's instructions, so the runtime and the lead always agree.
+- **When it applies.** The value is read when the profile is composed. A save recomposes the profile at once, so it applies to **new sessions**; a session that is already running keeps the setting it started with, so start a new Roblox development session after changing it. If DSH cannot reload the profile live, the panel says so: restart DSH, then start a new session.
 
 ## Tools
 
@@ -124,7 +136,13 @@ Selene's Roblox standard is seeded from the bundle beside the nearest `selene.to
 
 ## Workflow
 
-Describe the game outcome; the captain coordinates and delegates. Workers implement, derive checks, repair failures and report evidence, and coupled work can stay with one worker. The lead loads [the workflow skill](skills/roblox-tiered-workflow/SKILL.md) before planning, implementation or review; workers load the domain skills for their scope.
+Describe the game outcome; the captain stays the coordinator. For a routine task it defines success and assigns one implementer to build and verify it; coupled work stays with that one worker. It adds workers only when work can run in parallel or needs a specialist, and a separate QA worker is optional.
+
+**One focused check by default.** A content or UI change is inspected once in Studio. A gameplay change exercises the behavior that changed. The other tools stay available on demand: Lune for logic regressions, two clients for shared multiplayer behavior, and the device matrix when responsive layout is at risk. Changes to this plugin also run its own `npm test` suite.
+
+**Independent review is reserved for consequential work:** saves and migrations, purchase grants, multiplayer authority and releases. The reviewer is a different worker from the implementer; the provider may be the same. Only a concrete bug, a missed acceptance criterion or a specific risk in the changed behavior blocks. After a fix the failed check runs again, and a blocker that survives two repair attempts is reported instead of looped on.
+
+Workers implement, derive checks, repair failures and report evidence. The lead loads [the workflow skill](skills/roblox-tiered-workflow/SKILL.md) before planning, implementation or review; workers load the domain skills for their scope.
 
 Skill use is enforced, not advisory. Worker dispatch and file edits are refused until the lead has loaded the workflow skill and the relevant roblox-brain domain skills. Every worker prompt must state `Brain revision: <pinned SHA>`, `Required skills: <names>` and require a report of loaded skills and applied checks. Workers, including nested helpers, cannot edit until they have loaded their required skills, and only skills served from the pinned bundle count. A goal cannot be completed while any worker is missing one. Questions and lookups are never gated. See [skill-selection.md](skills/roblox-tiered-workflow/references/skill-selection.md#enforcement).
 
@@ -142,7 +160,7 @@ The lead keeps you looking along with it: when workers have captured something n
 
 ### Visual quality gate
 
-Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` (copy [the template](templates/VISUAL_GATE.md) and replace `<scope>` with your feature or release name), or when the `roblox-routing-guard` config sets `visualGate: on` (`off` disables it). When active, the runtime refuses:
+Controlled by the **Visual gate** toggle (Off by default; see [Visual gate toggle](#visual-gate-toggle)). The runtime enforces it only when the setting is **On**; the `roblox-routing-guard` row's `visualGate` carries the value, and `auto` or unset reads as Off. Copy [the template](templates/VISUAL_GATE.md) to `docs/<scope>/VISUAL_GATE.md`, replacing `<scope>` with your feature or release name. When On, the runtime refuses:
 
 - any worker dispatch without a `Role: <role>/<tier>` line, or whose route belongs to a different cell;
 - a `visual/*` review without a capture id or image path, without `Verdict: PASS|FAIL` and a checklist, or without naming the gate file;
@@ -161,6 +179,8 @@ Opt-in per project: active when the workspace has `docs/<scope>/VISUAL_GATE.md` 
 **File validation.** Verdict values must be exactly `PASS` or `FAIL`. Explicit `Client source:` entries may be project-relative files or folders; missing paths, wildcards, absolute paths and escapes fail instead of silently disabling freshness checks. Omit the line to use defaults (absent default folders are allowed). Asset sourcing must contain actual Piece records, or a substantive `Not applicable: UI-only …` explanation when no art is being added/replaced. Cross-owner authorization dates must be real calendar dates, and a final asset id must match a kept candidate.
 
 **Conservative change tracking.** Generated assets and manifests remain watched because they can affect the game. Ignore only known non-runtime artifacts; `Ignore:` replaces the backup defaults, so repeat those patterns if needed. Freshness is still based on filesystem timestamps, not a content snapshot: pure deletions and deliberately preserved/backdated mtimes are not fully detected. Neither the checker nor a screenshot log proves subjective quality or substitutes for the independent reviewer’s actual judgment.
+
+With the gate Off none of this runs: `roblox_visual_gate` reports that the gate does not apply, no gate status line is added, and the lead is told in its instructions that the gate is Off.
 
 Routes are advisory planning policy, not a runtime router, availability guarantee or fixed roster: discover what is available before dispatch and adapt explicitly when a route is unavailable. Quota or outage is capacity evidence, never proof of inadequate reasoning.
 
@@ -193,6 +213,8 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 ## Releases
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
+
+- **Unreleased** — Faster routine work. The lead defines success and assigns one implementer who builds and verifies a routine task with one focused Studio check; other tools stay on demand. Independent review is required only for saves and migrations, purchase grants, multiplayer authority and releases, needs a different worker but not a different provider, and blocks only on concrete bugs, missed acceptance criteria or specific risks. New persisted **Visual gate** toggle in Settings, default Off: Off skips the formal visual reviewer, screenshot checklist and reapproval after edits; On restores the existing gate. Legacy `auto` and unset read as Off, explicit `on`/`off` are kept, and `VISUAL_GATE.md` files are untouched.
 
 - **1.5.11** — New icon: a tilted blue block with white code brackets. It is drawn for DSH's 36×36 icon size with a transparent background, so it sits correctly in Plugin Manager's tile in light and dark themes.
 - **1.5.10** — Easier status to read. The lead ends each reply with a `Waiting on:` line and then one list item per running worker (name, model, effort, task), instead of one long paragraph. With no running worker it writes `Waiting on: nothing`.

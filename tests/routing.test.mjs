@@ -158,8 +158,8 @@ test('guard denials carry the structured identity contract', () => {
   assert.ok(denial.info.code.startsWith('ROUTING_'));
 });
 
-test('independent final review keeps cross-provider routes available', () => {
-  assert.deepEqual(routes.independentReview, { differentWorker: true, crossProvider: true, preliminaryIsApproval: false });
+test('independent review needs a different worker but not a different provider, and stays routable', () => {
+  assert.deepEqual(routes.independentReview, { differentWorker: true, crossProvider: false, preliminaryIsApproval: false });
   const reviewerStandard = evaluateDispatch(spawn({ provider: 'codex', model: 'gpt-6.1-sol', reasoning_effort: 'high' }), policy);
   const implementerStandard = evaluateDispatch(spawn({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning_effort: 'high' }), policy);
   assert.equal(reviewerStandard.kind, 'allow');

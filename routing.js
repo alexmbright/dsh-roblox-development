@@ -25,8 +25,9 @@ import { loadBrain, createSkillGuard, registerAuditTool, createEvidenceStore, is
 import { statusContext, concurrencyCorrection } from './coordination.js';
 import {
   projectRoot, gateEnabled, dispatchDenial, gateFileEditDenial, playtestInsertDenial, completionDenial,
-  evaluateGate, gateReport, gateStatusLine, allRules, finalReply, replyCorrections, isVisualWork,
+  evaluateGate, gateReport, gateStatusLine, allRules, finalReply, replyCorrections, isVisualWork, visualGateInstructions,
 } from './visual-policy.js';
+import { normalizeVisualGate } from './visual-gate-setting.js';
 import { registerScreenshotTool, collectTree, storeTextOnlyCaptures } from './screenshots.js';
 import { crossNamespaceDenial } from './studio-ids.js';
 import { promptContext } from './coordination.js';
@@ -311,12 +312,13 @@ export function visualTurnOf(session, turn, gatePaths = []) {
  * @param options.brain - pinned brain, for the folded session state.
  * @param options.evidence - worker evidence store.
  * @param options.roleRoutes - `(role, tier) => routes[] | undefined`.
- * @param options.mode - `auto` (marker file), `on` or `off`.
+ * @param options.mode - `on` enforces the gate; `off` (default), legacy `auto` and unset do not.
  * @param options.previews - `on` reminds the lead once per turn to show new worker screenshots.
  * @param options.collect - capture collector (test seam).
  */
-export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode = 'auto',
+export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => undefined, mode: requestedMode = 'off',
   previews = 'on', collect = collectTree }) {
+  const mode = normalizeVisualGate(requestedMode);
   const workersOf = session => evidence?.rows(session.id) ?? [];
   const guard = execution => {
     const name = baseToolName(execution?.name);
@@ -410,7 +412,7 @@ export function createVisualGuard({ ctx, brain, evidence, roleRoutes = () => und
     if (!gateEnabled(root, mode)) return '';
     return gateStatusLine(evaluateGate(root));
   };
-  return { guard, turnStopping, report, statusLine };
+  return { guard, turnStopping, report, statusLine, mode };
 }
 
 /**
@@ -433,7 +435,7 @@ export function registerVisualGateTool(ctx, visual) {
       const session = exec?.agent?.session;
       const full = session === undefined ? undefined : visual.report(session);
       if (full === undefined) {
-        return { enabled: false, note: 'No docs/<scope>/VISUAL_GATE.md in this project and visualGate is not "on": the gate does not apply.' };
+        return { enabled: false, note: 'The Visual gate setting is Off (the default), so the gate does not apply. Turn it On in Settings -> Roblox routing to enforce it in new sessions; existing VISUAL_GATE.md files are kept.' };
       }
       return {
         enabled: true,
@@ -540,11 +542,12 @@ export function apply(ctx, config) {
     const cell = roles.find(entry => entry.role === role)?.tiers?.find(entry => entry.id === `${role}/${tier}` && entry.enabled !== false);
     return cell === undefined ? [] : [cell];
   };
+  // One resolved value feeds both the runtime guard and the lead's instructions below.
+  const visualMode = normalizeVisualGate(config?.visualGate);
   let visual;
   if (brain !== undefined) {
-    const mode = ['on', 'off'].includes(config?.visualGate) ? config.visualGate : 'auto';
     const previews = config?.screenshotPreviews === 'off' ? 'off' : 'on';
-    visual = createVisualGuard({ ctx, brain, evidence, roleRoutes, mode, previews });
+    visual = createVisualGuard({ ctx, brain, evidence, roleRoutes, mode: visualMode, previews });
   }
   // Captures by a model without image input are stored and shared instead of dropped.
   const offCaptures = ctx.on?.('tools/post-execute', storeTextOnlyCaptures(ctx));
@@ -638,6 +641,26 @@ export function apply(ctx, config) {
     }
   }
 
+  // The lead's visual-gate instructions come from the same resolved setting as the guard.
+  let dropVisualSection;
+  if (prompt !== undefined && typeof prompt.section === 'function') {
+    let order = 2802;
+    try {
+      const subagentOrder = typeof prompt.getSectionOrder === 'function' ? prompt.getSectionOrder('TOOL_SUBAGENT') : undefined;
+      if (Number.isFinite(subagentOrder)) order = subagentOrder + 2;
+    } catch { /* keep the fallback order */ }
+    try {
+      dropVisualSection = prompt.section({
+        name: 'roblox-visual-gate',
+        order,
+        text: () => visualGateInstructions(visualMode),
+        interpolate: false,
+      });
+    } catch (error) {
+      console.warn(`[roblox-routing-guard] visual gate instructions unavailable: ${error?.message ?? error}`);
+    }
+  }
+
   // The lookup tool is a convenience: it must never be able to fail this plugin, because a
   // rejected apply fails the whole preset mount. Registered fire-and-forget, logged on failure.
   let removeTool;
@@ -724,6 +747,7 @@ export function apply(ctx, config) {
     for (const disposeLifecycle of offLifecycle) disposeLifecycle();
     removeTool?.();
     dropSection?.();
+    dropVisualSection?.();
     dispose?.();
     for (const disposeRoot of allowed.values()) {
       if (typeof disposeRoot === 'function') disposeRoot();

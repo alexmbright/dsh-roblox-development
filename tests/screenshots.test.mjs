@@ -120,7 +120,7 @@ test('a visual review may be handed capture ids instead of file paths', () => {
   writeFileSync(path.join(root, 'docs/x/VISUAL_GATE.md'), 'Verdict: FAIL');
   const ctx = { get: key => (key === 'workingDirectory' ? { get: () => root } : undefined) };
   const route = { provider: 'codex', model: 'gpt-6.1-terra', reasoning_effort: 'medium' };
-  const { guard } = createVisualGuard({ ctx, brain, roleRoutes: () => [route] });
+  const { guard } = createVisualGuard({ ctx, brain, mode: 'on', roleRoutes: () => [route] });
   const prompt = 'Role: visual/standard\nView cap-1a2b3c4d5e and cap-2b3c4d5e6f with roblox_screenshots.\nReturn Verdict: PASS|FAIL with a checklist in docs/x/VISUAL_GATE.md.';
   assert.equal(guard({ name: 'subagent', arguments: { prompt, ...route }, agent: { id: 'l', session: session('l', []) } }), undefined);
 });

@@ -141,19 +141,10 @@ window.__ModuleLoader__.load({
         label: entry.label ?? `${entry.provider}/${entry.model}`,
       }));
 
-      // Final review needs a different provider from the implementer; with a single seeded
-      // model that cannot hold, so say so instead of letting the preset promise independence.
-      const implementerProviders = new Set(data.roles.filter(role => role.role === 'implementer')
-        .flatMap(role => role.tiers.map(tier => overrides[tier.id]?.provider ?? tier.provider)));
-      const reviewerShares = data.roles.filter(role => role.role === 'reviewer')
-        .flatMap(role => role.tiers)
-        .filter(tier => implementerProviders.has(overrides[tier.id]?.provider ?? tier.provider)).length;
-
+      // Independent review needs a different worker, not a different provider, so no provider warning.
       return h('div', { style: box, 'data-roblox-routing': true },
         h('div', { style: muted }, `${data.roles.reduce((total, role) => total + role.tiers.length, 0)} role/tier cells · `
           + `${(data.models ?? []).length} connected models`),
-        reviewerShares === 0 ? null : h('div', { style: { ...muted, color: '#c98a2b' }, role: 'status' },
-          `${reviewerShares} reviewer cell${reviewerShares === 1 ? '' : 's'} use the same provider as the implementer, so final review cannot be independent.`),
 
         ...data.roles.map(role => h('div', { key: role.role },
           h('div', { style: roleHead }, role.role),
@@ -232,6 +223,89 @@ window.__ModuleLoader__.load({
           + 'Changes apply as soon as they are saved: a newly chosen model is dispatchable for new sessions, '
           + 'and sessions already running keep the models they started with.'),
         h(RoutingPanel));
+    }
+
+    /* ------------------------------------------------------------------------------------------ */
+    /* Visual gate toggle                                                                          */
+    /* ------------------------------------------------------------------------------------------ */
+
+    const GATE_NEW_SESSION = 'New sessions use this setting. Sessions that are already running keep the setting they started with, '
+      + 'so start a new Roblox development session after you change it.';
+
+    /** Saved, persisted on/off switch for the visual gate; Off is the default. */
+    function VisualGatePanel() {
+      const [state, setState] = useState({ status: 'loading', value: 'off', legacy: false });
+      const [failure, setFailure] = useState(null);
+      const [saving, setSaving] = useState(false);
+      const [saved, setSaved] = useState(null);
+
+      const load = useCallback(async () => {
+        setFailure(null);
+        try {
+          const payload = await post('visual-gate/read');
+          setState({ status: 'ready', value: payload.value === 'on' ? 'on' : 'off', legacy: payload.legacy === true });
+        } catch (error) {
+          setFailure(error);
+          setState(current => ({ ...current, status: 'failed' }));
+        }
+      }, []);
+
+      useEffect(() => { load(); }, [load]);
+
+      const choose = async next => {
+        setSaving(true);
+        setFailure(null);
+        setSaved(null);
+        try {
+          const result = await post('visual-gate/write', { value: next });
+          setState({ status: 'ready', value: result.value === 'on' ? 'on' : 'off', legacy: false });
+          setSaved(result.applied?.applied === false
+            ? `Saved: Visual gate ${result.value === 'on' ? 'On' : 'Off'}. DSH could not reload the profile live (${result.applied.reason}), `
+              + 'so restart DSH, then start a new Roblox development session.'
+            : `Saved: Visual gate ${result.value === 'on' ? 'On' : 'Off'}. Start a new Roblox development session to use it; running sessions keep their previous setting.`);
+        } catch (error) {
+          setFailure(error);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      if (state.status === 'loading') return h('div', { style: muted }, 'Loading Visual gate…');
+      if (state.status === 'failed') {
+        return h('div', { style: box },
+          h('div', { style: notice('error'), role: 'alert' }, `Visual gate unavailable: ${failure?.message ?? 'unknown error'}`),
+          h('button', { type: 'button', style: button, onClick: load }, 'Retry'));
+      }
+      const on = state.value === 'on';
+      return h('div', { style: box, 'data-roblox-visual-gate': on ? 'on' : 'off' },
+        h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontWeight: 600 } },
+          h('input', {
+            type: 'checkbox',
+            role: 'switch',
+            'aria-label': 'Visual gate',
+            checked: on,
+            disabled: saving,
+            onChange: () => choose(on ? 'off' : 'on'),
+          }),
+          h('span', null, `Visual gate: ${on ? 'On' : 'Off'}`)),
+        h('div', { style: muted }, on
+          ? 'On: the full gate is enforced for UI, art, scene and layout work. A visual reviewer, a screenshot checklist in VISUAL_GATE.md and a fresh review after every edit are required before visual work counts as done.'
+          : 'Off (default): a routine UI task finishes with one implementer and one Studio check. There is no formal visual reviewer, screenshot checklist or reapproval after edits. Studio screenshots and playtests stay available.'),
+        h('div', { style: muted }, 'Turn it On for polish or release work. Existing VISUAL_GATE.md files are kept either way.'),
+        state.legacy ? h('div', { style: muted, role: 'status' }, 'A legacy “auto” value was found and is treated as Off. Choose On or Off to replace it.') : null,
+        h('div', { style: { ...muted, color: '#c98a2b' }, role: 'note' }, GATE_NEW_SESSION
+          + ' If DSH cannot reload the profile live, restart DSH first.'),
+        failure === null ? null : h('div', { style: notice('error'), role: 'alert' }, failure.message),
+        saved === null ? null : h('div', { style: notice('ok'), role: 'status' }, saved));
+    }
+
+    function VisualGateSection() {
+      return h('section', { 'data-roblox-visual-gate-section': true },
+        h('h3', { style: { margin: '0 0 4px', fontSize: '15px', fontWeight: 600 } }, 'Roblox visual gate'),
+        h('p', { style: { ...muted, margin: '0 0 8px' } },
+          'Controls whether UI, art and scene work needs the formal visual review before it counts as done. '
+          + 'The same setting drives the runtime guard and the instructions the lead reads.'),
+        h(VisualGatePanel));
     }
 
     /* ------------------------------------------------------------------------------------------ */
@@ -517,6 +591,12 @@ window.__ModuleLoader__.load({
           order: 25,
           label: 'Roblox routing',
         }, RoutingSection));
+        ctx.slots.inject('settings.section', () => ctx.slots.register({
+          name: 'settings.section',
+          id: 'roblox-visual-gate',
+          order: 24,
+          label: 'Roblox visual gate',
+        }, VisualGateSection));
         ctx.slots.inject('settings.section', () => ctx.slots.register({
           name: 'settings.section',
           id: 'roblox-open-cloud',

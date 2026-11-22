@@ -16,7 +16,7 @@ Discover the connected server and exact tool schemas before use. Official tools 
 | Studio list, script read/multi-edit, console output, start/stop play | official | Native tools |
 | `execute_luau` | either | Name the server and pass its own id |
 
-A capture of 256×256 or smaller, or one that reports `studioFastPathUnavailable`, is marked suspicious in `roblox_screenshots`: probably not the real viewport, so it does not count for the visual gate. Capture again with the official `screen_capture`.
+A capture of 256×256 or smaller, or one that reports `studioFastPathUnavailable`, is marked suspicious in `roblox_screenshots`: probably not the real viewport, so it is not valid evidence (and does not count for the visual gate when it is On). Capture again with the official `screen_capture`.
 
 ## One operator, explicit handoff
 
@@ -38,6 +38,6 @@ On competing edits, ambiguous mapping or divergent versions, retain both version
 
 ## Runtime evidence
 
-**Look first.** Before calling any UI, art, scene or layout result acceptable, capture it (screen_capture, capture_screenshot or capture_device_matrix) and view the image yourself; an operator's description is not evidence. Captures are shared by id through `roblox_screenshots`: report the ids you captured instead of saving files, and export one to the project only when a file is required. Insert Creator Store assets in Edit mode only, never during a playtest; strip scripts, rescale and fix the pivot, then capture and judge the asset in the scene.
+**Look first.** Before calling any UI, art, scene or layout result acceptable, capture it once (screen_capture, capture_screenshot or capture_device_matrix when responsive layout is at risk) and view the image yourself; an operator's description is not evidence. With the Visual gate Off that one inspection is the whole visual check; with it On the gate's reviewer and checklist apply as well. Captures are shared by id through `roblox_screenshots`: report the ids you captured instead of saving files, and export one to the project only when a file is required. Insert Creator Store assets in Edit mode only, never during a playtest; strip scripts, rescale and fix the pivot, then capture and judge the asset in the scene.
 
 Derive focused source readback, metadata inspection and solo/multiclient playtests from the acceptance criteria and domain skills. Observe actual client/server state, errors and visual behavior. Record backend/target, changed paths, expected and observed outcomes and remaining gaps. Shell checks do not prove Studio behavior, and a successful tool return does not establish correct synchronization or gameplay.

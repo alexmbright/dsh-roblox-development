@@ -21,7 +21,7 @@
  * @module @alexturbo/dsh-roblox-development/visual-policy
  */
 import path from 'node:path';
-import { checkVisualGate, gateScopes, latestChange, watchSpec, GATE_FILE, RULES } from './tools/check-visual-gate.mjs';
+import { checkVisualGate, latestChange, watchSpec, GATE_FILE, RULES } from './tools/check-visual-gate.mjs';
 import { baseToolName } from './skill-policy.js';
 import { captureRefs } from './screenshots.js';
 
@@ -60,11 +60,9 @@ export function projectRoot(ctx, session) {
   return typeof cwd === 'string' && cwd !== '' ? cwd : undefined;
 }
 
-/** Whether the visual gate applies to this project. */
-export function gateEnabled(root, mode = 'auto') {
-  if (mode === 'off' || root === undefined) return false;
-  if (mode === 'on') return true;
-  return gateScopes(root).length > 0;
+/** Whether the visual gate applies: only the explicit on setting, in a session with a project root. */
+export function gateEnabled(root, mode = 'off') {
+  return mode === 'on' && root !== undefined;
 }
 
 /**
@@ -258,6 +256,32 @@ export function completionDenial({ root, objective, lead, workers = [] }) {
   return deny(`Roblox visual gate FAILED: the objective is visual, so the goal cannot complete (${report.problems.map(formatProblem).join('; ')}). `
     + 'Report "visual gate FAILED" with these reasons, get fresh screenshots, dispatch a visual review, and retry. '
     + 'roblox_visual_gate shows the same check and every rule.', 'VISUAL_GATE_FAILED');
+}
+
+/**
+ * The lead's visual-gate instructions for one mode. The guard and this text read the same
+ * setting, so the lead is never told the gate is on while the runtime lets everything through.
+ * @param mode - the resolved gate mode (`on`; anything else reads as Off).
+ */
+export function visualGateInstructions(mode) {
+  if (mode === 'on') {
+    return [
+      'Visual gate: ON (Settings -> Roblox routing). The project gate is enforced for UI, art, scene, layout, polish and release work. '
+      + 'Judge visuals only from screenshots you viewed yourself this session, never from a worker\'s or operator\'s text, and never call visuals done, good or ready on a rating alone. '
+      + 'Every dispatch states "Role: <role>/<tier>". UI, art, scene and layout work is accepted only after a visual/standard (visual/expert for art direction) review whose prompt lists the screenshot capture ids, asks for "Verdict: PASS|FAIL" with a checklist, and names the docs/<scope>/VISUAL_GATE.md that only this reviewer writes. '
+      + 'Edits after the review need a fresh review. roblox_visual_gate runs the same check as goal completion and explains each failing rule. '
+      + 'When you report on visual work while the gate fails, open with "visual gate FAILED" and say in plain words what is missing, not rule ids; replies about other work do not mention the gate.',
+      'Asset sourcing (gate On): before primitive or code-built geometry becomes final art, each piece needs at least 6 varied search_assets queries, get_asset_thumbnail and get_asset_details for every shortlisted candidate, and a rejection reason for each discarded one. Scripts, triangle counts and pivots are fixable, so reject a candidate only after seeing it in the scene. Never insert during a playtest. Show the user the creator, id and price of each kept cross-owner asset, with its dated authorization. Record this under "## Asset sourcing" in VISUAL_GATE.md; completion cross-checks it against the asset tool calls. Worker prompts that touch Creator Store assets carry this rule.',
+    ].join('\n');
+  }
+  return [
+    'Visual gate: OFF (default; Settings -> Roblox routing). Do not dispatch a formal visual reviewer, do not require a screenshot checklist or VISUAL_GATE.md, and do not ask for reapproval after edits. '
+    + 'A routine UI, art, scene or content task finishes with one implementer who builds it and inspects it once in Studio: one screenshot of the changed view, plus capture_device_matrix only when responsive layout is at risk. '
+    + 'Look at that capture yourself (roblox_screenshots view) before you call visuals done; a worker\'s rating alone is not evidence. '
+    + 'Studio screenshots, playtests and the visual role stay available on demand, for example for art direction a user asks for. '
+    + 'The gate\'s runtime checks are not active, so do not mention the gate in replies. Turning it On in Settings restores the full gate for polish or release work; that applies to new sessions.',
+    'Assets: search the Creator Store (search_assets, then thumbnail and details) before final art is built from primitives, show the user the creator, id and price of each kept cross-owner asset, and never insert during a playtest.',
+  ].join('\n');
 }
 
 /** Rule table for roblox_visual_gate. */

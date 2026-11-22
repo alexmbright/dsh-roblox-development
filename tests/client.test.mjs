@@ -54,8 +54,8 @@ test('the client registers a Roblox routing settings section', () => {
   assert.deepEqual(plugin.inject, ['slots']);
   const seen = [];
   plugin.apply({ slots: { inject: (slot, cb) => { seen.push(slot); cb?.(); }, register: () => () => {} } });
-  // Routing and Open Cloud each register their own settings section.
-  assert.deepEqual(seen, ['settings.section', 'settings.section']);
+  // Routing, Visual gate and Open Cloud each register their own settings section.
+  assert.deepEqual(seen, ['settings.section', 'settings.section', 'settings.section']);
 });
 
 test('the panel lays out one group per role with a tier row inside', () => {
@@ -177,4 +177,37 @@ test('the client also registers a Roblox Open Cloud settings section with write-
   assert.equal(clearButtons.length, 3);
   assert.equal(clearButtons[0].props.disabled, false, 'a configured field can be cleared');
   assert.equal(clearButtons[1].props.disabled, true, 'an unset field cannot');
+});
+
+function gateSection(seeds) {
+  const plugin = loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined));
+  const sections = [];
+  plugin.apply({ slots: { inject: (_slot, cb) => cb?.(), register: (options, component) => { sections.push({ options, component }); return () => {}; } } });
+  return sections.find(entry => entry.options.id === 'roblox-visual-gate');
+}
+
+test('the Visual gate section shows an Off-by-default switch and says when a change applies', () => {
+  const section = gateSection([{ status: 'ready', value: 'off', legacy: false }, null, false, null]);
+  assert.ok(section, 'Visual gate section registered');
+  assert.equal(section.options.name, 'settings.section');
+  const nodes = walk({ type: section.component, props: {}, children: [] });
+  const toggle = nodes.find(node => node.type === 'input' && node.props?.['aria-label'] === 'Visual gate');
+  assert.ok(toggle, 'a Visual gate switch');
+  assert.equal(toggle.props.type, 'checkbox');
+  assert.equal(toggle.props.role, 'switch');
+  assert.equal(toggle.props.checked, false);
+  const text = nodes.flatMap(node => node.children.filter(child => typeof child === 'string')).join('\n');
+  assert.match(text, /Visual gate: Off/);
+  assert.match(text, /one implementer and one Studio check/);
+  assert.match(text, /new Roblox development session/);
+  assert.match(text, /already running keep the setting they started with/);
+  assert.match(text, /restart DSH/);
+});
+
+test('the Visual gate switch reflects On and a legacy auto value is called out as Off', () => {
+  const nodes = walk({ type: gateSection([{ status: 'ready', value: 'on', legacy: true }, null, false, null]).component, props: {}, children: [] });
+  assert.equal(nodes.find(node => node.props?.['aria-label'] === 'Visual gate').props.checked, true);
+  const text = nodes.flatMap(node => node.children.filter(child => typeof child === 'string')).join('\n');
+  assert.match(text, /Visual gate: On/);
+  assert.match(text, /legacy “auto” value was found and is treated as Off/);
 });

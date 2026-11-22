@@ -38,6 +38,7 @@
     "apply-profile.js",
     "skill-policy.js",
     "visual-policy.js",
+    "visual-gate-setting.js",
     "screenshots.js",
     "screenshot-bridge.js",
     "studio-ids.js",

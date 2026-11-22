@@ -72,7 +72,7 @@ function project(gate = PASS_GATE, { gateTime = T0 + 60_000, clientTime = T0 } =
 const reviewedRow = { name: 'reviewer', audit: { assets: { searches: [], thumbnails: [], details: [], changes: [], screenshots: 1,
   screenshotEvidence: ['menu', 'hud', 'scene'].map(name => ({ time: T0 + 50_000, viewedAt: T0 + 50_000,
     suspicious: false, path: `screenshots/${name}.png` })) } } };
-function harness(root, { objective = 'Polish the main menu UI and scene art', rows = [reviewedRow], mode } = {}) {
+function harness(root, { objective = 'Polish the main menu UI and scene art', rows = [reviewedRow], mode = 'on' } = {}) {
   const ctx = { get: key => ({
     workingDirectory: { get: () => root },
     goals: { get: () => ({ objective }) },
@@ -88,13 +88,15 @@ const complete = session => call(session, 'update_goal', { action: 'complete' })
 
 /* Opt-in ---------------------------------------------------------------------------------- */
 
-test('projects without a VISUAL_GATE.md marker are untouched', () => {
+test('only the explicit On setting enforces the gate; a VISUAL_GATE.md file alone does not', () => {
   const root = project(null);
-  const { guard } = harness(root);
-  assert.equal(guard(complete(lead([]))), undefined);
-  assert.equal(guard(call(lead([]), 'subagent', { prompt: 'Make the menu.' })), undefined);
-  assert.equal(harness(project(), { mode: 'off' }).guard(complete(lead([]))), undefined, 'config flag off');
-  assert.equal(harness(root, { mode: 'on' }).guard(complete(lead([])))?.info.code, 'VISUAL_GATE_FAILED', 'config flag on');
+  assert.equal(harness(root, { mode: 'on' }).guard(complete(lead([])))?.info.code, 'VISUAL_GATE_FAILED', 'setting on, no gate file yet');
+  for (const mode of ['off', 'auto', undefined]) {
+    const { guard } = harness(project(), { mode: mode ?? 'off' });
+    assert.equal(guard(complete(lead([]))), undefined, `a gate file is ignored when the setting is ${mode}`);
+    assert.equal(guard(call(lead([]), 'subagent', { prompt: 'Make the menu.' })), undefined);
+  }
+  assert.equal(harness(project(), { mode: 'auto' }).guard(complete(lead([]))), undefined, 'legacy auto reads as Off');
 });
 
 /* Screenshot-before-accept ---------------------------------------------------------------- */
@@ -164,7 +166,7 @@ test('one rule source: a different project copy of the script is never run', () 
 test('roblox_visual_gate reports the same problems as completion, with the failing rules and watched paths', () => {
   const root = project(PASS_GATE.replace('Verdict: PASS', 'Verdict: FAIL'));
   const ctx = { get: key => (key === 'workingDirectory' ? { get: () => root } : undefined) };
-  const visual = createVisualGuard({ ctx, brain, evidence: { rows: () => [] }, collect: async () => ({ captures: [] }) });
+  const visual = createVisualGuard({ ctx, brain, mode: 'on', evidence: { rows: () => [] }, collect: async () => ({ captures: [] }) });
   let tool;
   ctx.tools = { register: definition => { tool = definition; return () => {}; } };
   registerVisualGateTool(ctx, visual);

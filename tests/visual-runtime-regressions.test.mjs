@@ -85,7 +85,7 @@ test('reply checks use runtime failures even when every file check passes', asyn
   const events = [{ type: 'turn/start', data: { turn: 1 } },
     { type: 'assistant/message', data: { turn: 1, message: { content: [{ type: 'text', text: 'The UI is ready.' }] } } }];
   const ctx = { get: key => key === 'workingDirectory' ? { get: () => f.root } : undefined };
-  const guard = createVisualGuard({ ctx, brain: loadBrain(), evidence: { rows: () => [] }, previews: 'off' });
+  const guard = createVisualGuard({ ctx, brain: loadBrain(), mode: 'on', evidence: { rows: () => [] }, previews: 'off' });
   await guard.turnStopping({ agent: { id: 'lead', session: { id: 'lead', events }, steer: m => steered.push(m) }, turn: 1 });
   assert.match(steered[0].content[0].text, /visual gate FAILED/);
 });
@@ -101,7 +101,7 @@ test('a new worker screenshot alone does not demand the gate opening, only the p
   const steered = [];
   let captures = [];
   const ctx = { get: key => key === 'workingDirectory' ? { get: () => f.root } : undefined };
-  const guard = createVisualGuard({ ctx, brain: loadBrain(), evidence: { rows: () => [] }, collect: async () => ({ captures }) });
+  const guard = createVisualGuard({ ctx, brain: loadBrain(), mode: 'on', evidence: { rows: () => [] }, collect: async () => ({ captures }) });
   const turn = (n, text) => [{ type: 'turn/start', data: { turn: n } },
     { type: 'assistant/message', data: { turn: n, message: { content: [{ type: 'text', text }] } } }];
   const agent = events => ({ id: 'lead', session: { id: 'lead', events }, steer: m => steered.push(m) });

@@ -257,3 +257,51 @@ test('a fresh install puts the main model on every row and recomposes once', asy
   assert.deepEqual(calls, []);
   assert.equal(JSON.parse(await readFile(path.join(sandbox, 'roblox-routing.json'), 'utf8')).overrides['planner/fast'].model, 'claude-opus-5-5');
 });
+
+async function resetSettings() {
+  try { await (await import('node:fs/promises')).rm(path.join(sandbox, 'roblox-settings.json')); } catch {}
+}
+
+test('the Visual gate bridge defaults to Off, persists On across a restart, and recomposes the profile', async () => {
+  await resetSettings();
+  const calls = [];
+  const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { calls.push('reconcile'); } };
+  const first = harness({ hmr });
+  await settle();
+  calls.length = 0;
+  const initial = await call(first.routes, '/visual-gate/read', {});
+  assert.equal(initial.status, 200);
+  assert.equal(initial.body.value, 'off');
+  assert.equal(initial.body.stored, false);
+  const saved = await call(first.routes, '/visual-gate/write', { value: 'on' });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.value, 'on');
+  assert.deepEqual(saved.body.applied, { applied: true });
+  assert.deepEqual(calls, ['reconcile'], 'saving recomposes so new sessions see it now');
+  assert.equal(JSON.parse(await readFile(path.join(sandbox, 'roblox-settings.json'), 'utf8')).visualGate, 'on');
+  // Restart: a brand-new mount reads the same file.
+  const second = harness({ hmr });
+  await settle();
+  assert.equal((await call(second.routes, '/visual-gate/read', {})).body.value, 'on');
+  assert.equal((await call(second.routes, '/visual-gate/write', { value: 'off' })).body.value, 'off');
+  assert.equal((await call(harness({ hmr }).routes, '/visual-gate/read', {})).body.value, 'off');
+});
+
+test('the Visual gate bridge rejects bad values and unauthenticated callers, and reports a failed live reload', async () => {
+  await resetSettings();
+  const { routes } = harness();
+  assert.equal((await call(routes, '/visual-gate/write', { value: 'auto' })).status, 400);
+  assert.equal((await call(routes, '/visual-gate/write', {})).status, 400);
+  assert.equal((await call(routes, '/visual-gate/write', { value: 'on' }, { host: '127.0.0.1:1', origin: 'http://127.0.0.1:1' })).status, 401);
+  await assert.rejects(readFile(path.join(sandbox, 'roblox-settings.json'), 'utf8'), 'nothing was saved by a refused write');
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const hmr = { runExclusive: async operation => operation(), reconcileProfile: async () => { throw new Error('boom'); } };
+    const failing = harness({ hmr });
+    const response = await call(failing.routes, '/visual-gate/write', { value: 'on' });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.applied.applied, false, 'the save stands; the panel tells the operator to restart');
+    assert.equal(JSON.parse(await readFile(path.join(sandbox, 'roblox-settings.json'), 'utf8')).visualGate, 'on');
+  } finally { console.warn = warn; }
+  await resetSettings();
+});

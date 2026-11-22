@@ -20,6 +20,7 @@ import { readJson, writeJson, rejectBrowserRequest } from './http-bridge.js';
 import { mountScreenshotBridge } from './screenshot-bridge.js';
 import { mountOpenCloudBridge } from './open-cloud-bridge.js';
 import { applyProfileChange } from './apply-profile.js';
+import { readVisualGate, writeVisualGate } from './visual-gate-setting.js';
 
 const BRIDGE_PREFIX = '/api/roblox-controls';
 const ROUTE_FIELDS = ['provider', 'model', 'reasoning_effort'];
@@ -317,6 +318,30 @@ function buildRoutes(ctx) {
     }
   };
   return [
+    {
+      // The Visual gate toggle. One value in the profile's roblox-settings.json drives the runtime
+      // guard and the lead's instructions; both are read when the profile is composed.
+      kind: 'exact',
+      path: `${BRIDGE_PREFIX}/visual-gate/read`,
+      handler: post(async (req, res) => {
+        const body = await readJson(req);
+        if (body === undefined) { writeJson(res, 400, { ok: false, code: 'malformed', message: 'malformed JSON body' }); return; }
+        writeJson(res, 200, { ok: true, ...readVisualGate(path.dirname(STATE_FILE)) });
+      }),
+    },
+    {
+      kind: 'exact',
+      path: `${BRIDGE_PREFIX}/visual-gate/write`,
+      handler: post(async (req, res) => {
+        const body = await readJson(req);
+        if (body === undefined) { writeJson(res, 400, { ok: false, code: 'malformed', message: 'malformed JSON body' }); return; }
+        const saved = writeVisualGate(path.dirname(STATE_FILE), body.value);
+        if (!saved.ok) { writeJson(res, saved.code === 'value-rejected' ? 400 : 409, saved); return; }
+        // Recompose so the guard and the lead's instructions see the new value in new sessions now.
+        const applied = await applyProfileChange(ctx);
+        writeJson(res, 200, { ok: true, value: saved.value, stored: true, applied });
+      }),
+    },
     {
       kind: 'exact',
       path: `${BRIDGE_PREFIX}/read`,

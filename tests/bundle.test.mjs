@@ -82,7 +82,7 @@ test('role-aware matrix ships structure and purposes only, never a model', () =>
   }
   assert.doesNotMatch(JSON.stringify(routes.roles), /xiaomi|mimo|deepseek|claude|codex|gpt-/i);
   assert.match(routes.roles.reviewer.fast[0].restriction, /Preliminary only/);
-  assert.deepEqual(routes.independentReview, {differentWorker: true, crossProvider: true, preliminaryIsApproval: false});
+  assert.deepEqual(routes.independentReview, {differentWorker: true, crossProvider: false, preliminaryIsApproval: false});
   assert.match(patch, /Captain uses the current session model/);
   assert.ok(routes.escalation.capacityFallback.includes('capacity evidence'));
 });
@@ -102,7 +102,7 @@ test('upstream libraries and installed skill roots are portable', () => {
 
 test('task-specific teams and Studio guardrails remain discoverable and visible', () => {
   assert.equal(routes.execution, 'native-subagents');
-  assert.equal(routes.initialReadyWorkers, 2);
+  assert.equal(routes.initialReadyWorkers, 1);
   assert.deepEqual(routes.scaleAfterMeasurement, [3, 4]);
   assert.equal(routes.studioOperator, 'message-coordinated-single-operator');
   assert.equal(routes.permissions, 'normal-dsh-access-controls-no-custom-guard');
@@ -172,7 +172,7 @@ test('distribution list covers every authored resource and only intended runtime
   const patterns = manifest.files.map(p => new RegExp('^' + p.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'));
   for (const file of await walk()) {
     assert.ok(file === 'package.json' || file.startsWith('vendor/') || file.startsWith('toolchain/') || patterns.some(p => p.test(file)), `unlisted: ${file}`);
-    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'skill-policy.js', 'visual-policy.js', 'screenshots.js', 'screenshot-bridge.js', 'studio-ids.js', 'http-bridge.js', 'open-cloud-bridge.js', 'open-cloud-mcp.js', 'studio-tool-search.js', 'open-cloud-bootstrap.mjs', 'apply-profile.js', 'tools/check-visual-gate.mjs', 'coordination.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
+    assert.ok(!/\.(?:js|mjs|cjs)$/.test(file) || file.startsWith('tests/') || file.startsWith('toolchain/') || ['index.js', 'routing.js', 'skill-policy.js', 'visual-policy.js', 'visual-gate-setting.js', 'screenshots.js', 'screenshot-bridge.js', 'studio-ids.js', 'http-bridge.js', 'open-cloud-bridge.js', 'open-cloud-mcp.js', 'studio-tool-search.js', 'open-cloud-bootstrap.mjs', 'apply-profile.js', 'tools/check-visual-gate.mjs', 'coordination.js', 'routing-controls.js', 'toolrun.js', 'client.js', 'workspace-runtime.js', 'workspace-env.js', 'scripts/prepare-workspace.mjs', 'scripts/update-brain.mjs', 'scripts/setup.mjs'].includes(file), file);
   }
   assert.match(await text('THIRD-PARTY-NOTICES.md'), /Copyright \(c\) 2026 TabooHarmony/);
 });

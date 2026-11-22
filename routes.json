@@ -3,7 +3,7 @@
   "kind": "advisory-role-aware-task-policy",
   "runtimeRouter": false,
   "execution": "native-subagents",
-  "initialReadyWorkers": 2,
+  "initialReadyWorkers": 1,
   "scaleAfterMeasurement": [
     3,
     4
@@ -101,17 +101,17 @@
       "fast": [
         {
           "restriction": "Preliminary only; cannot provide final independent approval.",
-          "purpose": "Independent correctness review of finished work; must be a different worker and provider from the implementer. Cheap first pass; bounded scope only."
+          "purpose": "Independent correctness review of consequential work (saves and migrations, purchase grants, multiplayer authority, releases); a different worker from the implementer, any provider. Blocks only on concrete bugs, missed acceptance criteria or specific risks in the changed behavior. Cheap first pass; bounded scope only."
         }
       ],
       "standard": [
         {
-          "purpose": "Independent correctness review of finished work; must be a different worker and provider from the implementer. Default tier for real work."
+          "purpose": "Independent correctness review of consequential work (saves and migrations, purchase grants, multiplayer authority, releases); a different worker from the implementer, any provider. Blocks only on concrete bugs, missed acceptance criteria or specific risks in the changed behavior. Default tier for real work."
         }
       ],
       "expert": [
         {
-          "purpose": "Independent correctness review of finished work; must be a different worker and provider from the implementer. Escalation for hard, risky or ambiguous work."
+          "purpose": "Independent correctness review of consequential work (saves and migrations, purchase grants, multiplayer authority, releases); a different worker from the implementer, any provider. Blocks only on concrete bugs, missed acceptance criteria or specific risks in the changed behavior. Escalation for hard, risky or ambiguous work."
         }
       ]
     },
@@ -170,7 +170,7 @@
   },
   "independentReview": {
     "differentWorker": true,
-    "crossProvider": true,
+    "crossProvider": false,
     "preliminaryIsApproval": false
   },
   "escalation": {
