@@ -28,9 +28,9 @@ To transfer, the outgoing operator settles calls, reports current mode, target I
 
 Routine implementation, inspection, sync and bounded testing within the user's requested development scope need no extra permission ceremony. Use normal approvals for destructive operations, publishing, uploads, purchases and external/production changes; confirm their exact action and destination. Ask for missing user-owned decisions or access, not for test procedures the project and skills can determine.
 
-## Native Script Sync
+## Native Script Sync (optional)
 
-Use the project's existing native Script Sync mapping rather than adding a competing source-sync workflow. Verify actual availability, script-to-disk mapping and baseline disk/Studio contents before edits. If sync is absent, inspect the project's supported workflow and identify the missing prerequisite rather than assuming disk files reach Studio. Source workers edit their assigned mapped paths; the operator observes synchronization and reads changed source back from the same target before calling it integrated.
+Script Sync is a suggestion, not a requirement. If the project already has a native Script Sync mapping, prefer it over adding a competing source-sync workflow: verify the script-to-disk mapping and baseline disk/Studio contents before edits. If sync is absent or the team works without it (for example a shared group place where Studio is the source of truth), do not stop: edit scripts in Studio through the Studio tools, read the source back from the same target, and follow the project's AGENTS.md/CLAUDE.md. Never assume disk files reach Studio. Source workers edit their assigned mapped paths; the operator observes synchronization and reads changed source back from the same target before calling it integrated.
 
 Disk source alone does not establish instance class, path/parent, attributes, tags, references, properties or execution settings. Preserve metadata and inspect it when behavior depends on it. Verify resulting instance topology for additions, renames and deletes using the actual mapping's behavior.
 
