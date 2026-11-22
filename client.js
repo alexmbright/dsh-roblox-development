@@ -601,15 +601,15 @@ window.__ModuleLoader__.load({
         h('path', { d: 'm10.5 9.5-2.5 2.5 2.5 2.5m3-5 2.5 2.5-2.5 2.5', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }));
     }
 
-    /** The single Roblox page: Visual gate, routing and Open Cloud, in that order. */
+    /** The single Roblox page: Visual gate, Open Cloud and routing, in that order. */
     function RobloxPage() {
       return h('div', { style: pageStyle, 'data-roblox-page': true },
         h('header', null,
           h('h2', { style: { margin: '0 0 4px', fontSize: '18px', fontWeight: 600 } }, 'Roblox'),
           h('p', { style: { ...muted, margin: 0 } }, 'Every setting for the Roblox development bundle, in one place.')),
         h(VisualGateSection),
-        h('div', { style: divider }, h(RoutingSection)),
-        h('div', { style: divider }, h(OpenCloudSection)));
+        h('div', { style: divider }, h(OpenCloudSection)),
+        h('div', { style: divider }, h(RoutingSection)));
     }
 
     return {

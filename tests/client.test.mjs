@@ -94,7 +94,7 @@ test('the panel lays out one group per role with a tier row inside', () => {
     { provider: 'deepseek-account', model: 'deepseek-flash', label: 'DeepSeek / Flash', efforts: ['low', 'high'] },
     { provider: 'deepseek-account', model: 'deepseek-v4-pro', label: 'DeepSeek / Pro', efforts: ['high', 'max'] },
   ];
-  const seeds = [...GATE_SEEDS, 'ready', null, { roles, models }, [], {}, {}, false, null, ...CLOUD_SEEDS];
+  const seeds = [...GATE_SEEDS, ...CLOUD_SEEDS, 'ready', null, { roles, models }, [], {}, {}, false, null];
   const section = register(loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined)));
   const elements = walk(section({}));
 
@@ -134,7 +134,7 @@ test('the effort picker keeps an unsupported saved effort visible and disables u
     { id: 'planner/standard', tier: 'standard', provider: '', model: '', reasoning_effort: '', enabled: false, purpose: 'p' },
   ] }];
   const models = [{ provider: 'deepseek-account', model: 'deepseek-flash', label: 'Flash', efforts: ['low', 'high'] }];
-  const seeds = [...GATE_SEEDS, 'ready', null, { roles, models }, [], {}, {}, false, null, ...CLOUD_SEEDS];
+  const seeds = [...GATE_SEEDS, ...CLOUD_SEEDS, 'ready', null, { roles, models }, [], {}, {}, false, null];
   const section = register(loaded[0].factory(name => (name === 'react' ? seeded(seeds) : undefined)));
   const pickers = walk(section({})).filter(element => element.type === 'select' && / reasoning effort$/.test(element.props['aria-label']));
   const labels = walk(pickers[0].children).filter(element => element.type === 'option').map(option => option.children[0]);
@@ -171,8 +171,8 @@ test('the Roblox page holds the Open Cloud section with write-only fields', () =
     status: 'ready',
     fields: { apiKey: { configured: true, source: 'stored', writable: true, masked: 'fixture-preview-should-not-render' }, creatorUserId: { configured: false, writable: true }, creatorGroupId: { configured: false, writable: true } },
   };
-  // useState order across the page: Visual gate, routing (loading), then CloudPanel (state, failure, notice, busy) and one draft per field.
-  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([...GATE_SEEDS, 'loading', null, { roles: [], models: [] }, [], {}, {}, false, null, ready, null, null, false, '', '', '']) : undefined));
+  // useState order across the page: Visual gate, then CloudPanel (state, failure, notice, busy) and one draft per field, then routing (loading).
+  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([...GATE_SEEDS, ready, null, null, false, '', '', '', 'loading', null, { roles: [], models: [] }, [], {}, {}, false, null]) : undefined));
   const page = mount(plugin).find(entry => entry.options.name === 'main');
   assert.ok(page, 'the Roblox page is registered');
 
@@ -195,8 +195,8 @@ test('the Roblox page holds the Open Cloud section with write-only fields', () =
 });
 
 function gateSection(seeds) {
-  // Gate seeds come first on the page; the routing panel and Open Cloud panel are left loading.
-  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([...seeds, 'loading', null, { roles: [], models: [] }, [], {}, {}, false, null, ...CLOUD_SEEDS]) : undefined));
+  // Gate seeds come first on the page, then Open Cloud, then the routing panel (left loading).
+  const plugin = loaded[0].factory(name => (name === 'react' ? seeded([...seeds, ...CLOUD_SEEDS, 'loading', null, { roles: [], models: [] }, [], {}, {}, false, null]) : undefined));
   return mount(plugin).find(entry => entry.options.name === 'main');
 }
 
