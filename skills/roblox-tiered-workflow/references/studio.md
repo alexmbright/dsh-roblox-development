@@ -15,13 +15,26 @@ Discover the connected server and exact tool schemas before use. Official tools 
 | Runtime eval, profiling, simulated input | chrrxs | Only chrrxs |
 | Studio list, script read/multi-edit, console output, start/stop play | official | Native tools |
 | `execute_luau` | either | Name the server and pass its own id |
-| Cloud-backed work: asset upload, generation, monetization, experience settings, place versions | chrrxs first, then official | chrrxs uses the Open Cloud key from the Roblox page and needs no per-project Studio permission; official is the fallback |
+| Open Cloud REST: data/memory stores, messaging, Luau execution, asset upload, place publish, universe/place settings, game passes, developer products, badges, secrets, bans | `roblox_cloud` (no MCP) | Direct HTTP with the key from the Roblox page; covers every API-key endpoint |
+| Cloud work that touches the open place: insert asset, generation | chrrxs first, then official | Needs the Studio session |
 
-### Cloud-backed work: try both routes
+### Open Cloud: call it directly
+
+`roblox_cloud` calls any Open Cloud endpoint with the saved key; never read the key from the environment or script calls with Lune or a shell. `roblox_cloud_find` searches an offline index of the official OpenAPI spec: keywords list operations with their scopes, and `"METHOD /path"` returns parameters and the body shape.
+
+**Coverage rule.** The Studio MCPs cover the open place; Open Cloud covers everything Roblox stores on the web. When a task touches a web/cloud resource (experience or place settings, versions, assets, monetization, data, moderation, localization, notifications, analytics, groups) and no loaded Studio tool does it, search `roblox_cloud_find` before reporting that it cannot be done or asking the user to do it by hand.
+
+- Path `{placeholders}` come from `params`; other `params` are query parameters.
+- `form` + `files` send multipart (asset create/update, game passes, developer products, badges); `file` sends a raw body (a `.rbxl`/`.rbxlx` to `POST /universes/v1/{universeId}/places/{placeId}/versions?versionType=Saved|Published`).
+- `wait: 120` polls an asset operation or Luau task until it finishes and returns the task logs. `pages` follows page tokens, `pick` trims the response, `save` writes it (or the file behind an asset-delivery `location`) into the workspace.
+- A 403 means the key lacks the scope or resource access named in the note; ask the user to add it in Creator Hub. Do not retry with another route.
+
+### Studio-bound cloud work: try both routes
 
 1. **chrrxs first.** Load with `roblox_studio_tools`: `upload_asset`, `generate_model`, `search_assets`, `insert_asset`, `manage_monetization`, `manage_experience`, `manage_instance`.
 2. **Official second:** `upload_image`, `store_image`, `generate_mesh`, `generate_material`, `generate_procedural_model`, `search_asset`, `insert_asset`. It may ask for per-project Studio permission.
-3. On a failure (missing/unscoped key, HTTP error, no matching tool, declined prompt), try the other route in the same turn. Report failure only when both fail, quoting both errors.
+3. On a failure (missing/unscoped key, HTTP error, no matching tool, declined prompt), try the other route in the same turn.
+4. **`roblox_cloud` last** for the cloud half: upload with `POST /assets/v1/assets` (`wait: 120`), then insert the returned asset id with a Studio tool. Generation has no Open Cloud equivalent. Report failure only when every available route fails, quoting each error.
 
 The fallback covers tool and credential failures only: it never bypasses a refusal, and uploads, publishes and saves still need user authorization. Before the second attempt, read back state so a timed-out first attempt is not duplicated.
 

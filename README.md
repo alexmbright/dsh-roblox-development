@@ -13,6 +13,7 @@ Package: `@alexturbo/dsh-roblox-development` · Preset ID: `roblox` · Licence: 
 - **Pinned tools that need no approval.** `lune`, `stylua`, `selene`, `luau`, `luau-analyze`, `luau-compile` and `luau-lsp` are provisioned once and invoked through `roblox_run_tool` in the host process — no shell, no sandbox escalation, no version drift.
 - **29 pinned Roblox skills.** Vendored from [roblox-brain](https://github.com/TabooHarmony/roblox-brain) at `ceee4aaa`, read offline from the installed bundle. Sessions never fetch upstream.
 - **Studio via MCP.** The official Studio MCP server and the pinned Chrrxs bridge, with a small adapter that keeps Chrrxs structured results visible.
+- **The full Open Cloud API as direct tools.** `roblox_cloud` calls any of the ~420 Open Cloud endpoints that accept an API key, with the key saved on the Roblox page; `roblox_cloud_find` looks up paths, scopes and body shapes offline. No MCP, Lune script or environment variable involved. See [Open Cloud tools](#open-cloud-tools).
 
 ## Requirements
 
@@ -109,7 +110,9 @@ Both servers stay connected because each has features the other lacks:
 | Playtests, runtime eval, profiling, simulated input | chrrxs |
 | Studio list, script read/multi-edit, console output, start/stop play | official |
 | `execute_luau` | either: name the server and pass its own id |
-| Asset upload and generation, monetization, experience settings, place versions | chrrxs with the Open Cloud key first; official as fallback. A failure is reported only after both routes fail |
+| Open Cloud REST (data/memory stores, messaging, Luau execution, asset upload, place publish, settings, monetization, bans, secrets) | `roblox_cloud`, no MCP (see [Open Cloud tools](#open-cloud-tools)) |
+| Insert asset, generation (needs the open place) | chrrxs first; official as fallback; then `roblox_cloud` for the upload half. A failure is reported only after every route fails |
+| Any web/cloud task no Studio tool covers | `roblox_cloud_find`, then `roblox_cloud` |
 
 A capture of 256×256 or smaller, or one reporting `studioFastPathUnavailable`, is marked **suspicious**: probably not the real viewport, so it does not count for the visual gate.
 
@@ -203,18 +206,32 @@ The committed patch resolves installed resources at runtime and contains no gene
 
 ## Open Cloud API key
 
-The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, monetization, experience and place-version tools) need a Roblox Open Cloud API key. Open the **Roblox** page in the sidebar, go to **Open Cloud**, paste the key from Creator Hub (create.roblox.com → Credentials) and press Save. Optionally add a creator user ID or group ID, which asset uploads use as the owner.
+The [Open Cloud tools](#open-cloud-tools) (`roblox_cloud`) and the `robloxstudio` MCP server's cloud tools (asset upload and generation, monetization, experience and place-version tools) use a Roblox Open Cloud API key. Open the **Roblox** page in the sidebar, go to **Open Cloud**, paste the key from Creator Hub (create.roblox.com → Credentials) and press Save. Optionally add a creator user ID or group ID, which asset uploads use as the owner.
 
 - Save writes to DSH's credential store, not the preset or routing configuration. The panel requires an authenticated local DSH browser session. It displays whether a value is set and where it comes from, without returning the key or a masked preview.
+- `roblox_cloud` reads the saved key from the credential store on each call inside the DSH host process; it is never placed in an environment variable or returned to the model.
 - DSH supplies `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_USER_ID` and `ROBLOX_CREATOR_GROUP_ID` to the community `robloxstudio` MCP launcher, not the official `Roblox_Studio` server. The launcher removes these variables before the verified MCP starts, so its Studio and media helpers don't inherit them. Studio-only tools remain available without a key. This does not isolate secrets from software running under your OS account.
 - Save or Clear refreshes the active community MCP connection without reloading the profile. In-flight calls may be interrupted. Clear removes the saved copy; it doesn't remove a launch environment or `.env` fallback, or revoke the key in Roblox.
-- To verify read access, open a published experience in Studio and ask the agent to list developer products for the connected experience. Use a key scoped to that experience with `developer-product:read`. An empty list is a successful read; Save alone does not verify authorization or write access.
+- To verify the key without any IDs, ask the agent to call `roblox_cloud GET /toolbox-service/v2/assets:search` with `{searchCategoryType: "Model", query: "tree", maxPageSize: 3}`. A 200 needs `creator-store-product:read`; a 403 naming that scope still proves the key reached Roblox and was accepted, and 401 means the key is invalid. For experience data, list developer products or data stores for a published experience with a key scoped to it. Save alone does not verify authorization or write access.
 - Give keys only the scopes they need, and never paste them into chat, commits, or release notes.
+
+## Open Cloud tools
+
+Two preset tools call Open Cloud over plain HTTPS from the DSH host process with the key saved above. No MCP server, Lune script, shell or environment variable is involved, so the sandbox never gets in the way.
+
+- **`roblox_cloud_find`** searches an offline index of every Open Cloud operation that accepts an API key (about 420, built from Roblox's official [OpenAPI document](https://github.com/Roblox/creator-docs/blob/main/content/en-us/reference/cloud/openapi.json)). Keywords list matching operations with their scopes; `"METHOD /path"` or `detail: true` adds parameters and the request-body shape. Endpoint knowledge costs tokens only when the agent asks for it.
+- **`roblox_cloud`** calls one endpoint: `path` with `{placeholders}` filled from `params` (other params become the query), and a body as `body` (JSON object), `bodyText`, `form` + `files` (multipart; asset create/update, game passes, developer products, badges) or `file` (raw upload, such as a `.rbxl` place publish). `wait` polls asset operations and Luau execution tasks and returns the task logs; `pages` follows page tokens; `pick` trims the response (`"dataStores[].id,nextPageToken"`); `save` writes the response, or the file behind an asset-delivery `location`, into the workspace.
+- A bare path is sent to the Roblox host the index lists for it (for example `/v1/locales/...` goes to `locale.roblox.com`); pass a full `https://` URL to choose the host yourself.
+- Asset creation fills `creationContext.creator` from the saved creator group or user ID when the request leaves it out.
+- The key is resolved per call and never returned; response text is scrubbed of it. Requests go only to the Roblox hosts in the index, keyed requests never follow redirects, and files are read and written only inside the session workspace. Errors return Roblox's message plus a hint naming the scope the operation needs.
+- Writes run without a prompt by default, like the MCP route; the lead still asks you before publishing, saving, uploading or other production changes. Set `approve: writes` on the `roblox-open-cloud-api` row to require a DSH approval for every non-GET call.
+- Refresh the index after Roblox adds endpoints: `node scripts/build-open-cloud-index.mjs` (or pass a downloaded `openapi.json`).
 
 ## Releases
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.7.0** — Full Open Cloud API as direct tools. `roblox_cloud` calls any Open Cloud endpoint over HTTPS with the key from the Roblox page, and `roblox_cloud_find` searches an offline index of all ~420 key-capable operations from Roblox's official OpenAPI document. Agents no longer hunt for the key in environment variables or script calls through Lune. Covers data and memory stores, messaging, Luau execution (with polling and logs), asset upload and versions, place publish, universe and place settings, game passes, developer products, badges, secrets, user restrictions, groups and more. Bare paths for endpoints on other Roblox hosts (locale, itemconfiguration, thumbnails, localization) are routed automatically. The Studio MCP routes remain for work that needs the open place, such as inserting assets. The lead and workers are told to search `roblox_cloud_find` whenever no Studio tool covers a web/cloud task, and to use `roblox_cloud` as the last route for uploads when both MCPs fail. Adds about 600 tokens of tool schemas and prompt.
 - **1.6.3** — Cloud work tries both Studio MCP routes. Asset upload and generation, Creator Store insert, monetization, experience settings and place versions go to `robloxstudio` with the Open Cloud key first (no per-project Studio permission), then fall back to the official `Roblox_Studio` tools. The lead reports a failure only after both routes fail and quotes both errors. The fallback never bypasses a refusal, and uploads, publishes and saves still need user authorization. Adds about 100 tokens to the lead prompt and tool description.
 - **1.6.0** — Faster routine work. The lead defines success and assigns one implementer who builds and verifies a routine task with one focused Studio check; other tools stay on demand. Independent review is required only for saves and migrations, purchase grants, multiplayer authority and releases, needs a different worker but not a different provider, and blocks only on concrete bugs, missed acceptance criteria or specific risks. All Roblox settings now live on one **Roblox** page, opened from the new **Roblox** entry in the left sidebar (Visual gate, Roblox Open Cloud and Roblox routing); the three separate Settings sections are gone. New persisted **Visual gate** toggle on that page, default Off: Off skips the formal visual reviewer, screenshot checklist and reapproval after edits; On restores the existing gate. Legacy `auto` and unset read as Off, explicit `on`/`off` are kept, and `VISUAL_GATE.md` files are untouched. A running session keeps the setting it started with: change the toggle, then start a new Roblox development session (restart DSH if the live reload fails).
 - **1.5.11** — New icon: a tilted blue block with white code brackets. It is drawn for DSH's 36×36 icon size with a transparent background, so it sits correctly in Plugin Manager's tile in light and dark themes.
