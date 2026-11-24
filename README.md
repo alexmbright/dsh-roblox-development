@@ -109,6 +109,7 @@ Both servers stay connected because each has features the other lacks:
 | Playtests, runtime eval, profiling, simulated input | chrrxs |
 | Studio list, script read/multi-edit, console output, start/stop play | official |
 | `execute_luau` | either: name the server and pass its own id |
+| Asset upload and generation, monetization, experience settings, place versions | chrrxs with the Open Cloud key first; official as fallback. A failure is reported only after both routes fail |
 
 A capture of 256×256 or smaller, or one reporting `studioFastPathUnavailable`, is marked **suspicious**: probably not the real viewport, so it does not count for the visual gate.
 
@@ -214,6 +215,7 @@ The `robloxstudio` MCP server's Open Cloud tools (asset upload and generation, m
 
 Notes for every version are on [GitHub Releases](https://github.com/alexmbright/dsh-roblox-development/releases).
 
+- **1.6.3** — Cloud work tries both Studio MCP routes. Asset upload and generation, Creator Store insert, monetization, experience settings and place versions go to `robloxstudio` with the Open Cloud key first (no per-project Studio permission), then fall back to the official `Roblox_Studio` tools. The lead reports a failure only after both routes fail and quotes both errors. The fallback never bypasses a refusal, and uploads, publishes and saves still need user authorization. Adds about 100 tokens to the lead prompt and tool description.
 - **1.6.0** — Faster routine work. The lead defines success and assigns one implementer who builds and verifies a routine task with one focused Studio check; other tools stay on demand. Independent review is required only for saves and migrations, purchase grants, multiplayer authority and releases, needs a different worker but not a different provider, and blocks only on concrete bugs, missed acceptance criteria or specific risks. All Roblox settings now live on one **Roblox** page, opened from the new **Roblox** entry in the left sidebar (Visual gate, Roblox Open Cloud and Roblox routing); the three separate Settings sections are gone. New persisted **Visual gate** toggle on that page, default Off: Off skips the formal visual reviewer, screenshot checklist and reapproval after edits; On restores the existing gate. Legacy `auto` and unset read as Off, explicit `on`/`off` are kept, and `VISUAL_GATE.md` files are untouched. A running session keeps the setting it started with: change the toggle, then start a new Roblox development session (restart DSH if the live reload fails).
 - **1.5.11** — New icon: a tilted blue block with white code brackets. It is drawn for DSH's 36×36 icon size with a transparent background, so it sits correctly in Plugin Manager's tile in light and dark themes.
 - **1.5.10** — Easier status to read. The lead ends each reply with a `Waiting on:` line and then one list item per running worker (name, model, effort, task), instead of one long paragraph. With no running worker it writes `Waiting on: nothing`.

@@ -15,6 +15,15 @@ Discover the connected server and exact tool schemas before use. Official tools 
 | Runtime eval, profiling, simulated input | chrrxs | Only chrrxs |
 | Studio list, script read/multi-edit, console output, start/stop play | official | Native tools |
 | `execute_luau` | either | Name the server and pass its own id |
+| Cloud-backed work: asset upload, generation, monetization, experience settings, place versions | chrrxs first, then official | chrrxs uses the Open Cloud key from the Roblox page and needs no per-project Studio permission; official is the fallback |
+
+### Cloud-backed work: try both routes
+
+1. **chrrxs first.** Load with `roblox_studio_tools`: `upload_asset`, `generate_model`, `search_assets`, `insert_asset`, `manage_monetization`, `manage_experience`, `manage_instance`.
+2. **Official second:** `upload_image`, `store_image`, `generate_mesh`, `generate_material`, `generate_procedural_model`, `search_asset`, `insert_asset`. It may ask for per-project Studio permission.
+3. On a failure (missing/unscoped key, HTTP error, no matching tool, declined prompt), try the other route in the same turn. Report failure only when both fail, quoting both errors.
+
+The fallback covers tool and credential failures only: it never bypasses a refusal, and uploads, publishes and saves still need user authorization. Before the second attempt, read back state so a timed-out first attempt is not duplicated.
 
 A capture of 256×256 or smaller, or one that reports `studioFastPathUnavailable`, is marked suspicious in `roblox_screenshots`: probably not the real viewport, so it is not valid evidence (and does not count for the visual gate when it is On). Capture again with the official `screen_capture`.
 
