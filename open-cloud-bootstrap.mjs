@@ -1,11 +1,11 @@
-/** Credential containment for the reviewed @chrrxs/robloxstudio-mcp@3.5.0 entry only. */
+/** Credential containment for the reviewed @chrrxs/robloxstudio-mcp@3.6.0 entry only. */
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import * as nodeModule from 'node:module';
 import { basename, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const entryHash = '8cddcf06629e9c18db46bfed95ab2357949ac66ea2cbdf95e6e537e714c32cc1';
+const entryHash = 'e3d2ebe2bd023d200bb89eeaba0692ecf8abea81516b631f814f4ea2b9a96eb5';
 const handoff = 'dsh:roblox-open-cloud-credentials';
 let pending;
 

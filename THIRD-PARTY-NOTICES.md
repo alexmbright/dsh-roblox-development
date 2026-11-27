@@ -16,7 +16,7 @@ Selene is licensed under MPL-2.0; the full notice is retained in `vendor/selene/
 
 Shared tool setup downloads unmodified official release assets pinned by URL and SHA-256 in `toolchain/lock.json`, rather than redistributing tool executables inside this bundle. Sources and licenses: Lune (MPL-2.0), https://github.com/lune-org/lune/tree/v0.11.1; StyLua (MPL-2.0), https://github.com/JohnnyMorganz/StyLua/tree/v2.6.0; Selene (MPL-2.0), https://github.com/Kampfkarren/selene/tree/0.32.0; Luau (MIT), https://github.com/luau-lang/luau/tree/0.745; luau-lsp (MIT), https://github.com/JohnnyMorganz/luau-lsp/tree/1.70.1. Their upstream sources retain the authoritative notices and source availability.
 
-The pinned npm dependency `@chrrxs/robloxstudio-mcp` 3.5.0 is MIT-licensed and is installed with its dependency notices by DSH's package manager: https://github.com/chrrxs/robloxstudio-mcp. This bundle does not copy provider credentials or account sessions.
+The pinned npm dependency `@chrrxs/robloxstudio-mcp` 3.6.0 is MIT-licensed and is installed with its dependency notices by DSH's package manager: https://github.com/chrrxs/robloxstudio-mcp. This bundle does not copy provider credentials or account sessions.
 
 ## Original artwork
 

@@ -161,7 +161,7 @@ test('pinned MCP uses synthetic credentials only on Open Cloud requests, not in 
   const initialized = await request(1, 'initialize', {
     protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'bootstrap test', version: '1' },
   });
-  assert.deepEqual(initialized.result.serverInfo, { name: 'robloxstudio-mcp', version: '3.5.0' });
+  assert.deepEqual(initialized.result.serverInfo, { name: 'robloxstudio-mcp', version: '3.6.0' });
   assert.match(stderr, /\[install-plugin\] Installed MCPPlugin\.rbxmx/);
   assert.ok(existsSync(join(plugins, 'MCPPlugin.rbxmx')));
   send({ method: 'notifications/initialized' });
