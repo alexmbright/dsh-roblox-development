@@ -23,6 +23,7 @@ import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { captureId, isSuspicious, STORED_MARKER } from './screenshots.js';
+import { canReadStoredSession, readStoredSession } from './session-read.js';
 
 export const WORKFLOW_SKILL = 'roblox-tiered-workflow';
 export const MUTATING_TOOLS = ['edit', 'write', 'apply_patch'];
@@ -657,7 +658,7 @@ export function createSkillGuard({ brain, evidence, log = line => console.warn(l
 /**
  * Durable-enough record of every worker each lead created, with audit evidence that survives the
  * worker's handle being disposed. Evidence is read from the live session while one exists, and
- * from the durable log (`sessionQuery.inspectSession`) after settlement or restart.
+ * from the durable log (`sessionQuery.observeSession`, or `inspectSession` on DSH 0.2.2-rc.5) after settlement or restart.
  * @param options.brain - pinned brain.
  * @param options.ctx - registrant context supplying agents, sessions, sessionQuery and subagents.
  * @returns the store.
@@ -704,7 +705,7 @@ export function createEvidenceStore({ brain, ctx }) {
     record.final = false;
     record.error = undefined;
     const query = get('sessionQuery');
-    if (typeof query?.inspectSession !== 'function') {
+    if (!canReadStoredSession(query)) {
       record.error = 'session log unavailable';
       return;
     }
@@ -712,7 +713,7 @@ export function createEvidenceStore({ brain, ctx }) {
     let audit;
     let error;
     try {
-      audit = await query.inspectSession(record.id, session => auditSession(session, brain));
+      audit = await readStoredSession(query, record.id, session => auditSession(session, brain));
     } catch (caught) {
       error = caught?.message ?? String(caught);
     }

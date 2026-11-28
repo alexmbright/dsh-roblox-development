@@ -12,6 +12,7 @@
 import { createReadStream } from 'node:fs';
 import { collectTreeById, describe } from './screenshots.js';
 import { readJson, writeJson, rejectBrowserRequest } from './http-bridge.js';
+import { readStoredSession } from './session-read.js';
 
 export const PREFIX = '/api/roblox-screenshots';
 
@@ -22,7 +23,7 @@ export async function rootSessionOf(ctx, sessionId, signal) {
     let header = ctx.get('agents')?.get?.(id)?.session?.header;
     if (header === undefined) {
       try {
-        header = await ctx.get('sessionQuery').inspectSession(id, session => session.header, signal);
+        header = await readStoredSession(ctx.get('sessionQuery'), id, session => session.header, signal);
       } catch {
         return id;
       }

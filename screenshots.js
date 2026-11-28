@@ -10,6 +10,7 @@
  */
 import { copyFileSync, mkdirSync, utimesSync } from 'node:fs';
 import path from 'node:path';
+import { readStoredSession } from './session-read.js';
 
 export const CAPTURE_TOOLS = ['screen_capture', 'capture_screenshot', 'capture_device_matrix'];
 export const CAPTURE_REF = /\bcap-[0-9a-z]{6,}\b/g;
@@ -178,7 +179,7 @@ export async function collectTreeById(ctx, rootId, rootName = 'lead', signal) {
     const live = ctx.get('agents')?.get?.(member.id)?.session;
     try {
       if (live !== undefined) captures.push(...capturesIn(live, member.name));
-      else captures.push(...await ctx.get('sessionQuery').inspectSession(member.id, session => capturesIn(session, member.name), signal));
+      else captures.push(...await readStoredSession(ctx.get('sessionQuery'), member.id, session => capturesIn(session, member.name), signal));
     } catch (error) {
       unreadable.push(`${member.name}: ${error?.message ?? error}`);
     }

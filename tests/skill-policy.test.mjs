@@ -249,7 +249,23 @@ test('a contract-changing send_message is validated; ordinary messages and repor
 
 /* Evidence store ------------------------------------------------------------------------------ */
 
-function evidenceHarness({ live = new Map(), durable = new Map(), catalog = [] } = {}) {
+/** DSH 0.2.3+ exposes `observeSession` leases; DSH 0.2.2-rc.5 exposes `inspectSession`. */
+const durableQuery = (durable, api) => (api === 'observe'
+  ? {
+    observeSession: async id => {
+      if (!durable.has(id)) throw new Error('not found');
+      const { header, events } = durable.get(id);
+      return { source: 'prepared', header: { ...header, id }, events, cursor: events.length - 1, [Symbol.dispose]: () => {} };
+    },
+  }
+  : {
+    inspectSession: async (id, read) => {
+      if (!durable.has(id)) throw new Error('not found');
+      return read(durable.get(id));
+    },
+  });
+
+function evidenceHarness({ live = new Map(), durable = new Map(), catalog = [], api = 'inspect' } = {}) {
   const ctx = {
     get: key => ({
       agents: { get: id => (live.has(id) ? { id, session: live.get(id) } : undefined) },
@@ -258,22 +274,17 @@ function evidenceHarness({ live = new Map(), durable = new Map(), catalog = [] }
         namesOf: agent => ({ self: `name-${agent.id}` }),
         listDescendants: async () => catalog,
       },
-      sessionQuery: {
-        inspectSession: async (id, read) => {
-          if (!durable.has(id)) throw new Error('not found');
-          return read(durable.get(id));
-        },
-      },
+      sessionQuery: durableQuery(durable, api),
     })[key],
   };
   return { ctx, store: createEvidenceStore({ brain, ctx }) };
 }
 
-test('a finished worker stays in the acceptance check after its handle is disposed', async () => {
+for (const api of ['inspect', 'observe']) test(`a finished worker stays in the acceptance check after its handle is disposed (${api})`, async () => {
   const lagging = worker(goodPrompt(), skillLoad('roblox-luau-core'), { id: 'impl' });
   const live = new Map([['impl', lagging]]);
   const durable = new Map([['impl', lagging]]);
-  const { store } = evidenceHarness({ live, durable });
+  const { store } = evidenceHarness({ live, durable, api });
   const guard = guardOf({ evidence: store });
   store.start({ id: 'impl', parentSessionId: 'lead-1' });
   live.delete('impl');
@@ -283,8 +294,8 @@ test('a finished worker stays in the acceptance check after its handle is dispos
   assert.match(denial.reason, /name-impl missing roblox-networking/);
 });
 
-test('unreadable evidence blocks completion instead of counting as clean', async () => {
-  const { store } = evidenceHarness();
+for (const api of ['inspect', 'observe']) test(`unreadable evidence blocks completion instead of counting as clean (${api})`, async () => {
+  const { store } = evidenceHarness({ api });
   const guard = guardOf({ evidence: store });
   store.start({ id: 'gone', parentSessionId: 'lead-1' });
   await store.end({ id: 'gone', parentSessionId: 'lead-1', stopReason: 'completed' });
@@ -292,9 +303,9 @@ test('unreadable evidence blocks completion instead of counting as clean', async
   assert.match(denial.reason, /evidence unavailable \(not found\)/);
 });
 
-test('after a restart, completion requires an audit before it can be verified', async () => {
+for (const api of ['inspect', 'observe']) test(`after a restart, completion requires an audit before it can be verified (${api})`, async () => {
   const done = worker(goodPrompt(), [...skillLoad('roblox-luau-core'), ...skillLoad('roblox-networking')], { id: 'impl' });
-  const { store } = evidenceHarness({ durable: new Map([['impl', done]]),
+  const { store } = evidenceHarness({ api, durable: new Map([['impl', done]]),
     catalog: [{ kind: 'child', id: 'impl', parentId: 'lead-1', activity: 'inactive', name: 'impl' }] });
   const guard = guardOf({ evidence: store });
   const leadSession = groundedLead(...dispatched());
